@@ -5,7 +5,7 @@ Created on Thu May  7 09:46:24 2020
 @author: benja
 """
 
-from helper_funcs import lookupBRV, lookup_RAF, get_soil_hyd_factor, manure_factor
+from helper_funcs import lookupBRV, lookup_RAF, get_soil_hyd_factor, manure_factor, getFertFactor, uptake_dict
 import numpy as np
 
 class CropField():
@@ -18,14 +18,32 @@ class CropField():
         self.results['total p loss']=sum(self.results[pathway] for pathway in 
                     ['surface particulate loss', 'surface dissolved loss', 'subsurface_loss'])
         
-        print(self.results)
+    
+    
+    def setup_data(self):
+        '''Calculate needed parameters from loaded data.'''
+        
+        self.params['soil_total_phos']=calc_soilTP(self.params['soil_test_phos'], self.params['soil_is_clay'])
+        self.params['runoff_adj_factor']=lookup_RAF(self.params['hydro_group'], self.params['veg_type'], self.params['cover_perc'], self.params['tile_drain'])
+        self.params["baseROV"]=lookupBRV(self.params['county'], self.params['elevation'])
+        
+        self.manure_applications=self.params['manure_applications']
+        self.fertilizer_applications=self.params['fertilizer_applications']
+        
+        self.params['hydro_factor']=get_soil_hyd_factor(self.params['hydro_group'], self.params['tile_drain'])
+        self.params['RDR_factor']=calcRDR(**self.params)
+        self.params['crop_uptake']=uptake_dict[self.params['veg_type']]
+        self.params['soil_al_factor']=al_factor_soilP(self.params['Al_level'])
+        self.results={}
+        self.link_to_apps()
+        self.add_soil_P()
     
     
     def sim_parameters(self):
-        dic={}
-        dic['runoff_adj_factor']=lookup_RAF(self.hydro_group, self.veg_type,  self.cover_perc)
-    
-        return dic
+        '''Simulate parameters that we do not have data for'''
+        pass
+        
+        
     
     def sum_fractions(self, functions_to_sum, default_args={}):
         '''Return the sum of multiple functions, with all of the field's parameters passed to that function.'''
@@ -48,22 +66,58 @@ class CropField():
    
     
     def subsurface_loss(self, scaling_factor=80):
-        '''Subsurface loss'''
+        '''Subsurface loss from tile drainage. Page 10-11 of technical docs. '''
+        PF6=.2
+        default_args={'SDR_factor':1, 
+                      'RDR_factor':1, 
+                      'buffer_width':0, 
+                      'manure_setback':0, 
+                      'sed_cntrl_structure_fact':None}
+        
         if self.params.get('tile_drain', None):
             return self.sum_fractions([erodedSoilP, 
                                        manure_partic_P,
                                        dis_soilP,
                                        dis_manureP, 
                                        fertilizerP], 
-                                    {'SDR_factor':1, 'RDR_factor':1})*.2*scaling_factor
+                                        default_args)*PF6*scaling_factor
         else:
             return 0
         
     def link_to_apps(self):
         '''Set linkages between p applications and field object.'''
+        self.params['total_p_added']=sum([app.rate for app in self.manure_applications+self.fertilizer_applications])
         for app in self.manure_applications+self.fertilizer_applications:
             app.link_to_field(self)
+        
+        
+            
+    def add_soil_P(self):
+        '''Increase soil P levels to reflect fertilizer and manure applications.
+        Cells 134 and 135 in Spreadsheet.
+        from Technical docs, page 6:
+            It is assumed that the soil test was made before any manure or fertilizer applications.
+Therefore, the added P (after subtracting crop uptake, and dissolved and particulate P losses)
+is used to adjust soil test P by the equation, ∆STP/added P = 1.277 * Al0.7639 (see
+Aluminum factor above). This adjusted STP is then plugged into the appropriate regression
+equation for Total P.
 
+A limit on this TP estimate is made by adding the applied manure and fertilizer P (minus
+losses, as above), which represents added TP, to the TP calculated by regression from the
+original soil test P. The estimate cannot be greater than this limiting value.
+        '''
+        apps=self.fertilizer_applications+self.manure_applications
+        added_TP=sum([app.TPincr() for app in apps])
+        added_STP=sum([app.STPincr() for app in apps])
+        adj_stp=self.params['soil_test_phos']+added_STP
+        self.params['adj_total_phos']=min(
+                                    [calc_soilTP(adj_stp, self.params['soil_is_clay']),
+                                           self.params['soil_total_phos']+added_TP])
+        self.params['adj_test_phos']=adj_stp
+                   
+                  
+    
+    
     
 def CropFieldFirstRun(CropField):
     '''Initate class for a field for the first time.'''
@@ -79,7 +133,7 @@ def CropFieldFirstRun(CropField):
     
 class CropFieldFromSave(CropField):
     '''Initiate a class from saved data.
-    Pass a dictionary of known_parameters'''
+    Pass a dictionary of known parameters'''
     def __init__(self, key, data):
         self.known_params=data[key]
         
@@ -87,23 +141,15 @@ class CropFieldFromSave(CropField):
     def sim(self):
         self.sim_params=self.sim_parameters()
         self.params={**self.known_params, **self.sim_params}
-        
-    def calculate(self):
-        
+    
     
 
 class CropFieldFromDic(CropField):
     def __init__(self, dic):
         self.params=dic
-        self.params['soil_total_phos']=calc_soilTP(self.params['soil_test_phos'], self.params['soil_is_clay'])
-        self.params['runoff_adj_factor']=lookup_RAF(self.params['hydro_group'], self.params['veg_type'], self.params['cover_perc'])
-        self.params["baseROV"]=lookupBRV(self.params['county'], self.params['elevation'])
-        self.manure_applications=self.params['manure_applications']
-        self.fertilizer_applications=self.params['fertilizer_applications']
-        self.params['hydro_factor']=get_soil_hyd_factor(self.params['hydro_group'], self.params['tile_drain'])
-        self.params['RDR_factor']=calcRDR(**dic)
-        self.results={}
-        self.link_to_apps()
+        self.setup_data()
+        
+    
         
         
 def calc_soilTP(test_phos, soil_is_clay):
@@ -115,71 +161,68 @@ def calc_soilTP(test_phos, soil_is_clay):
         return 10.87*test_phos+760
     
         
-        
+
     
-def erodedSoilP(erosion_rate, soil_test_phos, soil_total_phos,  **kwargs):
+def erodedSoilP(erosion_rate, adj_test_phos, adj_total_phos,  **kwargs):
     '''Return the value for eroded soil Phosphorus. 
     Page 6 of technical docs:  
     1. Sediment (eroded soil) P loss = E * TP * TP Availability * SDR
 The four terms are:
 a. E = Annual soil loss. The RUSLE (ver. 1 or 2) or WEPP edge-of-field erosion rate in
 tons/ac is divided by 500 to convert it to million lb/ac. Annual rather than rotation erosion
-value should be used.
+value should be used...
 
-It is assumed that the soil test was made before any manure or fertilizer applications.
-Therefore, the added P (after subtracting crop uptake, and dissolved and particulate P losses)
-is used to adjust soil test P by the equation, ∆STP/added P = 1.277 * Al0.7639 (see
-Aluminum factor above). This adjusted STP is then plugged into the appropriate regression
-equation for Total P.
-
-A limit on this TP estimate is made by adding the applied manure and fertilizer P (minus
-losses, as above), which represents added TP, to the TP calculated by regression from the
-original soil test P. The estimate cannot be greater than this limiting value.
 c. TP availability factor. Research suggests that only a fraction of the total P in soils is
 available for the growth of algae. This factor ranges from 0.2 (i.e., 20% of TP is algal
 available) at a soil test P of 0 ppm, to a maximum of 0.4 at STP = 100 ppm (based on a
 chemical extraction of Lake Champlain sediments that approximates algal uptake).
-d. SDR = Sediment Delivery Ratio (see Sediment and Runoff Delivery Ratios, above). For
-the case of sediment, if a sediment control structure is entered into the P Index, its factor 
-May 24, 2017 Vermont-P-Index-User-Guide with logos and statements.doc 7
-(with a range of 0 to 0.2) is used instead of the SDR (range 0.4 to 1.0). In addition, if the
-total distance to the nearest water body is greater than the buffer width, the additional
-distance beyond the buffer is considered to have some effect on sediment load. The Distance
-Factor is calculated for this additional distance, and is multiplied by the Buffer Factor for the
-final SDR    '''
-    return (erosion_rate/500)*soil_total_phos*P_avail(soil_test_phos)*SDRsed(**kwargs)*.44
+d. SDR = Sediment Delivery Ratio (see Sediment and Runoff Delivery Ratios, above). '''
+    return np.product([erosion_rate,
+                       .002,    #conversion factor to million lbs per acre
+                       adj_total_phos,
+                       P_avail_excel(adj_test_phos),
+                       SDRsed(**kwargs)])
 
 
 
 
 
-def P_avail(soil_test_phos):
+def P_avail(adj_test_phos):
     '''TP availability factor. From Page 6:
     This factor ranges from 0.2 (i.e., 20% of TP is algal available) 
 at a soil test P of 0 ppm, to a maximum of 0.4 at STP = 100 ppm
         '''
-    if soil_test_phos<100:
-        return .2+soil_test_phos/100*.2
+    if adj_test_phos<100:
+        return .2+adj_test_phos/100*.2
     else:
         return .4
     
+def P_avail_excel(adj_test_phos):
+    '''TP availability factor. This formula from the excel spreadsheet'''
+    if adj_test_phos<100:
+        return .1+adj_test_phos/100*.1
+    else:
+        return .2
+
 
 def manure_partic_P(manure_applications, **kwargs):
     '''Phosphorus lost from manure particulate P
-    Page 7 of Technical docs.'''
-    s=0
-    sdr=SDRm(**kwargs)
-    for m_app in manure_applications:
-        s+=m_app.calcParticPloss(sdr)
-        m_app.sdr=sdr
-    return s
+    Page 7 of Technical docs. Multiply by the SDR for manure and by .44 to convert to lbs P'''
+    sdr=SDRm(buffer=False, **kwargs)
+    return sum([m_app.partic_loss for m_app in manure_applications])*sdr*.44
+
         
 
-def dis_soilP(soil_test_phos, baseROV, runoff_adj_factor, **kwargs):
+def dis_soilP(adj_test_phos, baseROV, runoff_adj_factor, RDR_factor,  **kwargs):
     '''Calculate dissolved P loss.   '''
-    return DRPexcel(soil_test_phos)*baseROV*runoff_adj_factor
+    return np.product([DRPexcel(adj_test_phos),
+                       baseROV,
+                       runoff_adj_factor,
+                       RDR_factor])
     
-def DRP(soil_test_phos):
+
+
+def DRP(adj_test_phos):
     '''Calculate Dissolved Reactive Phosphorus:
         From VTPI Tech Docs:
            Dissolved reactive P (DRP) concentration in runoff, expressed in parts per million.
@@ -187,59 +230,72 @@ Research involving simulated rainfall applied to field plots on a wide variety o
 agricultural soils has provided a good relationship between soil test P (STP) and DRP
 concentration in runoff: DRP = 0.1275 + 0.0104 * STP (see Figure 4). Soil test P is first
 adjusted for any increment due to manure or fertilizer P added since the soil test was made''' 
-    return .1275+(.0104*soil_test_phos)
+    return .1275+(.0104*adj_test_phos)
 
-def DRPexcel(soil_test_phos):
+def DRPexcel(adj_test_phos):
     '''Dissolved Reactive Phosphorus Based on #s in the excel model'''
-    return 2*(.00705*soil_test_phos+.03)
+    return 2*(.00705*adj_test_phos+.03)
     
     
-def dis_manureP(manure_applications, **kwargs):
-    '''Calculate sum of dissolved Manure Applications'''
-    s=0
-    for m_app in manure_applications:
-        s+=m_app.calcDisPloss()
-    return s
+def dis_manureP(manure_applications, RDR_factor, **kwargs):
+    '''Calculate sum of dissolved loss from Manure Applications.
+    Multiply by sdr and .44 to convert to lbs P'''
+    sdr=SDRm(buffer=False, **kwargs)
+    return sum([m_app.dissolved_loss for m_app in manure_applications])*sdr*.44
+
     
 
 
 
     
-def fertilizerP(fertilizer_applications, **kwargs):
-    '''Calculate sum of dissolved P from fertilizer applications'''
-    s=0
-    for f_app in fertilizer_applications:
-        s+=f_app.calcDissolved_P_loss()
-    return s
+def fertilizerP(fertilizer_applications, RDR_factor, **kwargs):
+    '''Calculate sum of dissolved P from fertilizer applications. 
+    Multiply by the RDR factor and .44 to convert to lbs P per acre.'''
+    return sum([f_app.dissolved_loss for f_app in fertilizer_applications])*.44*RDR_factor
     
 
-def SDR(distance, Buffer=True):
+def SDR(distance, buffer=True, clay=False):
     '''Sediment and Runoff Delivery Ratios Page 2 of the documentation.
     distance: width of buffer or distance to water (in feet).
-    Buffer: Boolean: are we calculating Buffer factor?'''
-    if Buffer:
-        return 1.744*np.exp((-43-distance)/45)+.4
+    Buffer: Boolean: are we calculating Buffer factor?
+    clay: reflects the excel spreadsheet where if soil is clay, buffer factor is calculated as a distance factor.
+    (See Row 63)
+    '''
+    if (buffer and (not clay)):
+        fact= 1.744*np.exp((-43-distance)/45)+.4       
     else: 
-        return 1.047*np.exp((-70-distance)/60)+.7
+        fact= 1.047*np.exp((-70-distance)/60)+.7
+    if fact<1:
+        return fact
+    else:
+        return 1
     
-    
-def SDRm(distance_to_water, buffer_width, **kwargs):
+def SDRm(manure_setback,buffer_width, buffer, **kwargs):
+    '''SDR for a manure application.'''
     if 'SDR_factor' in kwargs.keys():
         return kwargs['SDR_factor']
     else:
-        return SDR(buffer_width, Buffer=False)
+        return SDR(buffer_width+manure_setback, buffer=buffer)
 
 def calcRDR(buffer_width, **kwargs):
+    '''Calculate basic RDR.'''
     if 'RDR_factor' in kwargs.keys():
         return kwargs['RDR_factor']
     else:
-        return SDR(buffer_width, Buffer=False)
+        return SDR(buffer_width, buffer=False, clay=kwargs['soil_is_clay'])
 
 def SDRsed(sed_cntrl_structure_fact, buffer_width, distance_to_water, **kwargs):
-    '''SDR for eroded soil. Page 6 of technical docs.'''
+    '''SDR for eroded soil. Page 6 of technical docs.
+   if a sediment control structure is entered into the P Index, its factor 
+May 24, 2017 Vermont-P-Index-User-Guide with logos and statements.doc 7
+(with a range of 0 to 0.2) is used instead of the SDR (range 0.4 to 1.0). In addition, if the
+total distance to the nearest water body is greater than the buffer width, the additional
+distance beyond the buffer is considered to have some effect on sediment load. The Distance
+Factor is calculated for this additional distance, and is multiplied by the Buffer Factor for the
+final SDR    '''
     if sed_cntrl_structure_fact:
         return sed_cntrl_structure_fact 
-    elif buffer_width>distance_to_water:
+    elif buffer_width==distance_to_water:
         return SDR(buffer_width, True)
     else:
         return SDR(buffer_width, True)*SDR(distance_to_water, False)
@@ -250,20 +306,35 @@ def SDRsed(sed_cntrl_structure_fact, buffer_width, distance_to_water, **kwargs):
     sed_cntrl_structure_fact (simulate)
     buffer_width (from GIS?)
     distance_to_water (from GIS)
-    Hydrologic Group: (From GIS)
-    Soil Type: (From GIS)
     Al_level (simulate)
     fertilizer_rate (simulate)
     manure_rate (simulate)
-    vegetation levels at different time series: simulate/from GIS
+    vegetation levels/crop types at different time series: simulate/from GIS
     soil_test_phosphorus: simulate
     
     
-    '''        
+    '''   
+
+     
+def al_factor_soilP(al_level):
+    '''Adjustment for Aluminum level for P applications.
+    Page 5 of Technical Docs:
+        Soil “reactive aluminum” binds a fraction of added P, making it less available to plants, and also
+less extractable by buffer solutions used in soil testing laboratories to determine “soil test P” (STP), such
+as the Modified Morgan test in Vermont. 
+The relation between reactive Al and the change in STP per
+unit of added fertilizer P is described in Jokela (1998) by a power curve, ∆STP per 1-ppm added P =
+1.277 * Al-0.7639 (see diagram). 
+This equation is used in the P Index to estimate the increases in soil test P
+and total P with added fertilizer and manure.'''
+    if al_level<=10:
+        return .2
+    else:
+        factor=1.277*al_level**(-0.7639)
+    return max([factor, .03])       
 
 
-
-def aluminumFactor(Al_level, incorp_method):
+def aluminum_factor_runoff(Al_level, incorp_method):
     '''Calculate the al_factor for binding added Manure/fertilizer P.
     Description of page 5 of technical docs. '''
     if Al_level<20:
@@ -291,7 +362,35 @@ class pApplication(object):
     def link_to_field(self, field):
         '''Link P_application to its field.'''
         self.field=field
-        self.Al_factor=aluminumFactor(self.field.params['Al_level'], self.incorp_method)
+        self.Al_factor_runoff=aluminum_factor_runoff(self.field.params['Al_level'], self.incorp_method)
+        self.Al_factor_soil=self.field.params['soil_al_factor']  
+        self.runCalcs()
+        
+    def runCalcs(self):
+        '''Caclulate all quantities for this application.'''
+        self.calcDisPloss()
+        self.calcParticLoss()
+        self.P_incr(self.field.params['total_p_added'], self.field.params['crop_uptake'])
+        
+    def P_after_uptake(self,total_p_added, crop_uptake):
+        '''Calculate P from P_application that is not taken up by crop.'''
+        if total_p_added==0:
+            total_p_added=1
+        increment= self.rate-(crop_uptake/2*self.rate/total_p_added)
+        if increment>0:
+            return increment
+        return 0
+    
+    def P_incr(self, total_p_added, crop_uptake):
+        '''Calculate P not eroded or taken up by crop from manure.
+        For use in calculating P adjusted soil P levels.'''
+        self.post_uptake=self.P_after_uptake(total_p_added, crop_uptake)
+        incr=self.post_uptake-self.dissolved_loss-self.partic_loss
+        if incr>0:
+            self.incr=incr
+        else:   
+            self.incr=0
+            
             
 class fertApplication(pApplication):
     '''A fertilzer application.
@@ -301,24 +400,49 @@ class fertApplication(pApplication):
         pApplication.__init__(self, field, incorp_method)
         self.date=date
         self.rate=rate
+        self.method_factor=getFertFactor(self.incorp_method, self.date)
     
-    def calcDissolved_P_loss(self):
-        '''Calculate Fertilizer P. Page 10 of tech docs.
+    def calcDisPloss(self):
+        '''Calculate Fertilizer P loss at edge-of-field.
+        Page 10 of tech docs.
 Dissolved P loss from applied fertilizer is calculated similarly to that from manure.
 The Fertilizer Runoff Factor is the same as the Manure Runoff Factor, 0.02 or 2%. Availability is
 assumed to be 1.0 for fertilizer P.
 The Aluminum and Fertilizer Factors are explained above.
-The Runoff Delivery Ratio uses vegetated buffer distance only.'''
-        self.Dissolved_loss=np.product([self.rate,
+'''
+        self.dissolved_loss=np.product([self.rate,
                                         self.dis_runoff_factor,
-                                        self.Al_factor,
+                                        self.Al_factor_runoff,
                                         self.avail_factor,
                                         self.field.params['hydro_factor'],
-                                        self.field.params['RDR_factor'],
-                                        .44
+                                        self.method_factor,
                                             ])
-        return self.Dissolved_loss
-       
+        
+     
+    def calcParticLoss(self):
+        '''No P is lost from fertilizer in partic form.'''
+        self.partic_loss=0
+      
+        
+    def TPincr(self):
+        '''Cell 131 in spreadsheet. Total Phosphorus added to soil from fertilizer application.'''
+        if self.method_factor>=.4:
+            mf=7.5
+        else:
+            mf=1
+        return self.incr*.44/2*mf
+    
+    def STPincr(self):
+        '''Cell 130 in spreadsheet. Soil Test Phosphorus added to soil from fertilizer application.'''
+        if self.method_factor>=.4:
+                mf=7.5
+        else:
+            mf=1
+        return self.incr*self.Al_factor_soil *mf
+    
+
+    
+    
 class manureApplication(pApplication):
     '''A manure application.
     Rate: Manure in lbs P2O5 per acre.
@@ -338,31 +462,44 @@ class manureApplication(pApplication):
     
     
         
-    def calcParticPloss(self, sdr):
-        ''''Estimate particulate P runoff from a manure application. 
+    def calcParticLoss(self):
+        ''''Estimate particulate P runoff from a manure application, to edge-of-field. 
         Page 7 of technical docs. 
-        Pass a sediment deliver ratio : sdr.'''
+        '''
         self.partic_loss= np.product([self.rate,
                        self.mplf,
-                       sdr,
                        self.manure_factor,
-                       .44]
+                       ]
                         )
-        return self.partic_loss
     
     
     def calcDisPloss(self):
-        ''''Estimate dissolved P runoff from a manure application. 
-        Page 10 of technical docs. 
-        Pass a sediment deliver ratio : sdr.'''
+        ''''Estimate dissolved P runoff from a manure application to edge-of-field
+        Page 10 of technical docs.
+        '''
         self.dissolved_loss= np.product( [self.rate,
                             self.dis_runoff_factor,
                             self.manure_factor,
-                            self.Al_factor,
+                            self.Al_factor_runoff,
                             self.avail_factor,
                             self.field.params['hydro_factor'],
-                            self.field.params['RDR_factor'],        
-                            .44,
                                     ])
-        return self.dissolved_loss
-        
+ 
+    
+    def STPincr(self):
+        '''Cell 100 in spreadsheet.  Soil Test Phosphorus added to soil from manure application.'''
+        if self.manure_factor==1:
+            mf=3
+        else:
+            mf=1
+        return  self.incr*0.44/2*mf*self.Al_factor_soil
+    
+
+    def TPincr(self):
+        '''Cell 101 in spreadsheet. Total Phosphorus added to soil from manure application.'''
+        if self.manure_factor==1:
+            mf=7.5
+        else:
+            mf=1
+        return self.incr*.44/2*mf
+

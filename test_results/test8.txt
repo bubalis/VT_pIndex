@@ -1,0 +1,160 @@
+:   
+Program error messages::   
+Notices:   
+USDA Tract #:   
+Field ID::   
+Field Name:   
+P Index::   35.556676041466304
+Interpretation::   Medium
+Pathway I:  Sediment-bound P:   18.171483120000005
+Pathway II:  Dissolved P in surface runoff:   11.459080247888577
+Pathway III: Subsurface loss of diss. & sed.-bound P:   5.926112673577716
+Location (Vermont county):   NW (Addison, Chittenden, Franklin, Grand Isle)
+Elevation zone, feet:   < 600 
+Soil test P, ppm (Mod. Morgan's):   2.0
+Reactive soil aluminum, ppm:   0.0
+Manure 1 rate, lb P2O5/ac:   45.0
+Manure 1 application time of year:   April - vegetated
+Manure 1 application method:   Not incorporated
+Manure 1 time to incorporation:   Not incorporated
+Manure 1 type:   Dairy
+Manure 2 rate, lb P2O5/ac:   0.0
+Manure 2 application time of year:   None applied
+Manure 2 application method:   None applied
+Manure 2 time to incorporation:   None applied
+Manure 2 type:   Dairy
+Manure 3 rate, lb P2O5/ac:   0.0
+Manure 3 application time of year:   None applied
+Manure 3 application method:   None applied
+Manure 3 time to incorporation:   None applied
+Manure 3 type:   Dairy
+Fertilizer rate, lb P2O5/ac:   5.0
+Fertilizer method/timing:   Surf. appl. April (vegetated) (0.60)
+Erosion rate (RUSLE or WEPP, tons/ac/yr):   1.0
+Soil type or series (& HydrGrp):   Salmon    (B)
+Surface cover %:   3.0
+Crop / Vegetation type:   Small grains
+TOTAL distance FROM field edge TO any water conveyance, ft:   0.0
+Vegetated buffer width BETWEEN field edge & conveyance, ft:   0.0
+Manure spreading setback dist WITHIN field, ft:   0.0
+Presence of Pattern Tile Drainage:   Yes
+Sediment trap structure or other erosion control:   None
+Base GS runoff, in.:   1.536469860728357
+Snowmelt, water equivalent, in.:   0.8125
+Runoff DRP, mg/L::   0.140816124
+Manure P loss, lb/ac (field edge):   0.1188
+Fert. P loss, lb/ac (field edge):   0.013200000000000002
+Dist. (excl. buffer) to stream, ft:   0.0
+Sed. delivery factor (to stream):   1.0
+Soil hydrologic group:   A
+Texture group:   Non-clay
+Runoff adj. factor (for soil type, veg. cover):   0.15
+Runoff delivery factor (to stream):   1.0
+Soil TP concentration, ppm:   822.2722500000001
+Manure particulate P loss, lb P/ac::   0.0594
+Sediment (soil) P loss, lb/ac:   0.16774353900000005
+Diss. manure P loss, lb/ac:   0.1188
+Diss. fert. P loss, lb/ac:   0.013200000000000002
+Diss. soil P loss, lb/ac:   0.011238503098607213
+Pathway 1 intermediate calculations:   
+million lb soil/ac = tons/ac*2000/1,000,000:   0.002
+Buffer factor:   1.0
+Dist. factor (beyond buffer):   1.0
+Dist. factor @total distance:   1.0
+Dist. factor @buffer distance:   1.0
+"Residual" distance effect:   1.0
+Sediment trap factor:   1.0
+Sediment delivery ratio:   1.0
+TP availability factor:   0.10200000000000001
+Calc. soil BAP/TP = :   822.3029268
+Pathway 2 intermediate calculations:   
+Growing season RO, million lb water/ac :   0.3480257881535801
+Snowmelt RO, million lb water/ac :   0.184039375
+Hydr. group:   1.0
+Veg. type:   2.0
+Runoff Delivery Ratio:   1.0
+RDR for manure:   1.0
+Adjusted soil test P (added M&F)::   5.73164
+Basic aluminum factor::   1.0
+Crop uptake P2O5:   50.0
+Seasonal manure runoff factor 1:   0.02
+Manure Al factor 1:   1.0
+Manure time factor 1:   0.6
+Manure method factor 1:   1.0
+Manure time to incorp. factor  1:   1.0
+Manure factor  1:   0.6
+Manure 1 after uptake:   22.5
+Manure P Availability coefficient 1:   1.0
+STP increment (added manure1):   2.91654
+TP increment (added manure1):   36.45675
+Seasonal manure runoff factor 2:   0.02
+Manure Al factor  2:   1.0
+Manure time factor  2:   0.0
+Manure method factor  2:   0.0
+Manure time to incorp. factor  2:   0.0
+Manure factor  2:   0.0
+Manure 2 after uptake:   0.0
+Manure P Availability coefficient 2:   1.0
+STP increment (added manure2):   0.0
+TP increment (added manure2):   0.0
+Seasonal manure runoff factor 3:   0.02
+Manure Al factor  3:   1.0
+Manure time factor  3:   0.0
+Manure method factor  3:   0.0
+Manure time to incorp. factor  3:   0.0
+Manure factor  3:   0.0
+Manure 3 after uptake:   0.0
+Manure P Availability coefficient 3:   1.0
+STP increment (added manure3):   0.0
+TP increment (added manure3):   0.0
+Effective runoff for manure1 (million lb/ac):   0.3480257881535801
+Effective runoff for manure2 (million lb/ac):   0.3480257881535801
+Effective runoff for manure3 (million lb/ac):   0.3480257881535801
+Seasonal fertilizer runoff factor:   0.02
+Fertilizer Al factor:   1.0
+Fert. method/timing factor:   0.6
+Fert after uptake:   2.5
+STP increment (added fertilizer):   0.8151
+TP increment (added fertilizer):   4.0755
+BAP/TP calc. from adj. STP:   822.3029268
+BAP/TP calc. from added TP:   822.2722500000001
+Effective runoff for fert. (million lb/ac):   0.3480257881535801
+Hydr Soil Grp factor:   0.5
+Manure P Availability coefficient - see note:   1.0
+Manure1 P RO conc. (a la MN), adj for method/timing & Al:   1.188
+Manure2 P RO conc. (a la MN), adj for method/timing & Al:   0.0
+Manure3 P RO conc. (a la MN), adj for method/timing & Al:   0.0
+Fert P conc. (a la MN), adj for method/timing & Al:   0.088
+Runoff DRP (soil), mg/L:, unadj. STP:   0.0882
+Runoff DRP (soil), mg/L:, adj. STP:   0.140816124
+Error in Manure 1:   0.0
+Error in Manure 2:   0.0
+Error in Manure 3:   0.0
+Error in fertilizer:   0.0
+Error in crop/cover:   0.0
+Error in distance to stream:   0.0
+Error in RUSLE:   0.0
+Error in STP:   0.0
+Error Messages:   
+Conflict between manure (1st) rate and method/timing.:   
+Conflict between manure (2nd) rate and method/timing.:   
+Conflict between manure (3rd) rate and method/timing.:   
+Conflict between fertilizer rate and method/timing.:   
+Cover for this vegetation type MUST be > 20%:   
+TOTAL distance must be >= Buffer width:   
+Enter a value > 0 for RUSLE:   
+Enter a value > 0 for STP:   
+Subsurface Pathway Intermediate Calculations:   
+Unadjusted Sediment P loss lb/ac:   0.16774353900000005
+Unadjusted Manure Particulate P loss lb/ac:   0.0594
+Unadjusted sum of particulate subsurface load:   0.22714353900000006
+Adjustment of subsurface particulate loss to account for % of surface runoff entering tile system, lb/ac::   0.045428707800000016
+Unadjusted Diss. Soil P loss lb/ac:   0.011238503098607213
+Unadjusted Diss. Manure P loss #1 lb/ac:   0.1188
+Unadjusted Diss. Manure P loss #2 lb/ac:   0.0
+Unadjusted Diss. Manure P loss #3 lb/ac:   0.0
+Unadjusted Diss. Fertilizer P loss lb/ac:   0.0132
+Unadjusted sum of dissolved subsurface load:   0.1432385030986072
+Adjustment of subsurface dissolved P loss to account for % of surface runoff entering tile system, lb/ac::   0.02864770061972144
+Adjustment of subsurface particulate and dissolved loss to account for % of surface runoff entering tile system, lb/ac::   0.07407640841972145
+To add additional columns, copy rows 1 to 192:   To add additional columns, copy rows 1 to 192

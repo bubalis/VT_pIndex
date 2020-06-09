@@ -15,8 +15,8 @@ Testing based on the spreadsheet model.
 import xlrd
 from field import manureApplication, CropFieldFromDic, fertApplication
 import re
-
-
+import numpy as np
+import os
 
 
 #%%
@@ -47,7 +47,7 @@ def parse_manure_time(string):
     elif '<' in string:
         return int(re.search('\d+', string).group())-.5
     else:
-        return int(re.search('\d+', string).group())+1
+        return int(re.search('\d+', string).group())+.5
     
 
 def parse_fert_date_method(string):
@@ -93,12 +93,13 @@ def y_n_to_bool(string):
 
 def coverParser(string):
     '''Return a float value for cover percent based on a string from the sheet'''
-    string=str(string)
-    if string[0]=='0':
+    string=str(string).strip()
+    if string=='2.0':
         return .05
-    elif string[0]=='2':
+    elif string=='3.0':
         return .40
     else:
+        print(string)
         raise ValueError
 
 def elevParser(string):    
@@ -117,10 +118,12 @@ def countyParser(string):
     return counties.split(',')[0]
 
 def get_hydro_grp(string):
+    if string[0:5]=='Other':
+        return re.search(r'(?<=HydrGrp )\w', string).group()
     return string.split(r'(')[1][0]
     
 def is_clay(string):
-    return 'clay' in string
+    return 'Clay'==string
 
 def parse_field_params(dic):
     params={
@@ -130,19 +133,21 @@ def parse_field_params(dic):
     'Al_level': dic['Reactive soil aluminum, ppm'],
     'erosion_rate': dic['Erosion rate (RUSLE or WEPP, tons/ac/yr)'],
      'hydro_group' :get_hydro_grp(dic['Soil type or series (& HydrGrp)']),
-     'soil_is_clay': is_clay(dic['Soil type or series (& HydrGrp)']),
-     #'cover_perc': coverParser(dic['Surface cover %']), 
+     'soil_is_clay': is_clay(dic['Texture group']),
+     'cover_perc': coverParser(dic['Surface cover %']), 
      'veg_type':dic['Crop / Vegetation type'], 
      'distance_to_water' : dic['TOTAL distance FROM field edge TO any water conveyance, ft' ],
      'buffer_width': dic['Vegetated buffer width BETWEEN field edge & conveyance, ft' ],
-     #:dic['Manure spreading setback dist WITHIN field, ft'],
-    #'tile_drain': y_n_to_bool(dic['Presence of Pattern Tile Drainage']),
+     'manure_setback':dic['Manure spreading setback dist WITHIN field, ft'],
+    'tile_drain': y_n_to_bool(dic['Presence of Pattern Tile Drainage']),
     #'sed_control_struc':dic[ 'Sediment trap structure or other erosion control'],
     'sed_cntrl_structure_fact': None,
    'manure_applications': [manure_from_dict(n, dic) for n in [1,2,3,]],
     'fertilizer_applications':[fert_from_dict(dic) ],
-    'tile_drain':False,
-    'cover_perc': .05}
+    #'tile_drain':False,
+    #'cover_perc': .05
+    
+    }
     return params
 
 #%%
@@ -160,13 +165,40 @@ def load_example_data(data_col=5):
         values[row[4].value]=row[data_col].value
         if i>192:
             return values
+
+
+def check_correct(test_field, values):
+    results=[test_field.results[name] for name in [ 'total p loss',
+     'surface particulate loss' ,
+     'surface dissolved loss',
+     'subsurface_loss']]
     
+    test_values=[values[name] for name in [ 'P Index:',
+                    'Pathway I:  Sediment-bound P',
+                    'Pathway II:  Dissolved P in surface runoff',
+                    'Pathway III: Subsurface loss of diss. & sed.-bound P',]]
+    assert np.isclose(results, test_values, rtol=.03).all(), (test_values, results)
+    
+    
+        
+    
+    
+    
+if __name__=='__main__':
+    for i in range(5, 30):
+        values=load_example_data(i)
+        dic=parse_field_params(values)
+        
+        test_field=CropFieldFromDic(dic)
+        test_field.calcPindex()
+        with open(os.path.join('test_results', f'test{i}.txt'), 'w') as f:
+            for key, value in values.items():
+                print (f'{key}:   {value}', file=f)
+        check_correct(test_field, values)
+        
+                
+                
 
-values=load_example_data()
-dic=parse_field_params(values)
-
-test_field=CropFieldFromDic(dic)
-test_field.calcPindex()
-#%%
-
-test_field.params
+            
+    #%%
+    

@@ -1,0 +1,4 @@
+*.img
+*.tif
+/Source_data
+/intermediate_data

@@ -43,19 +43,19 @@ def lookupBRV(county, elevation):
         return values[0]
     elif 600<=elevation<=1000:
         return values[1]
-    elif 1000<elevation>6000:
+    elif 1000<elevation<6000:
         return values[2]
     else:
         print(f'{elevation} not valid')
         raise ValueError 
         
 runoff_adj_dict={'Corn & other row crops': [0.42, 0.25, 1.00, 0.75, 1.96, 1.48, 2.65, 1.98],
-'Row crops + successful cover crop': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82], 
-'Vegetables: clean cultivated': [0.42, 0.25, 1.00, 0.75, 1.96, 1.48, 2.65, 1.98], 
-'Vegetables: mulched, living row cover': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82],
-'Vegetables: vining or high-canopy': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82] ,
+'Row crop + successful cover crop': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82], 
+'Vegetable crop - clean cultivated': [0.42, 0.25, 1.00, 0.75, 1.96, 1.48, 2.65, 1.98], 
+'Vegetable crop - mulched, living row cover': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82],
+'Vegetable crop - vining or high-canopy': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82] ,
 'Small grains': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82],
- 'Alfalfa, other forages': [0, 0.12, 0, 0.55, 0, 1.37, 0, 1.98], 
+ 'Alfalfa & other hay crops': [0, 0.12, 0, 0.55, 0, 1.37, 0, 1.98], 
 'Pasture': [0, 0.02, 0, 0.30, 0, 1.08, 0, 1.82,] ,
 'CRP, other ungrazed, perm. veg.': [0, 0.01, 0, 0.12, 0, 0.50, 0, 1.00], 
 'Woodland': [0, 0.01, 0, 0.15, 0, 0.62, 0, 1.10],
@@ -70,9 +70,18 @@ new_RAF_dict={
         key:{hydro_groups[i]:value[i*2:(i*2+2)] for i in range(0,4)}
 for key, value in runoff_adj_dict.items()}
 
-def lookup_RAF(hydro_group, veg_type, cover_perc):
+tile_drain_adj_dict={'A':'A', #page 11
+                 'B': 'A',
+                 'C': 'B',
+                 'D': 'C'}
+
+
+
+def lookup_RAF(hydro_group, veg_type, cover_perc, tile_drain):
     '''Get the runoff adjustment factor based on Soil Hydrologic Group, Cover% and Vegetation Type.
     Based on page 9, table 6. '''
+    if tile_drain:
+        hydro_group=tile_drain_adj_dict[hydro_group]
     subset=new_RAF_dict[veg_type][hydro_group]
     if 0<=cover_perc<=.20:
         out= subset[0]
@@ -90,29 +99,45 @@ soil_hydro_factors={'A': 0.5,
 'C': 1.6,
 'D': 2.0}
 
-tile_drain_adj_dict={'A':'A', #page 11
-                 'B': 'A',
-                 'C': 'B',
-                 'D': 'C'}
 
-def get_soil_hyd_factor(letter, tile_drain):
-    '''retrieve a  '''
-    if tile_drain:
-        letter=tile_drain_adj_dict[letter] #Tile drainage upgrades the hydrologic group
-    return soil_hydro_factors[letter]
+def get_soil_hyd_factor(string, tile_drain):
+    '''retrieve hydrologic factor. 
+    Pass string (letter or two letters separated by slash)
+    and a boolean for tile_drain'''
+    if '/' in string: #adjustments for dual hydrologic groups
+        if tile_drain: 
+            string=string.split('/')[0] #tile drain gives higher hydro rating
+        else:
+            string=string.split('/')[1]
+    else: #Hydrologic groups can't be upgraded twice
+        if tile_drain: 
+            string=tile_drain_adj_dict[string] #Tile drainage upgrades the hydrologic group
+    return soil_hydro_factors[string]
+
+
 
 fertilizer_app_dict={
-('Surface applied', 'May-September'): 0.5,
-('Surface applied', 'October-December 15'): 1.0,
-('Surface applied', 'December 15-March'): 1.3,
-('Surface applied', 'April bare'): 0.8,
-('Surface applied', 'April vegetated'): 0.6,
-'Incorporated / moldboard': 0.05,
-'Incorporated / chisel': 0.25,
-'Incorporated / disk': 0.40,
-'Injected or subsurface banded': 0
+('Surface Applied', 'May-September'): 0.5,
+('Surface Applied', 'October-December 15'): 1.0,
+('Surface Applied', 'December 15-March'): 1.3,
+('Surface Applied', 'April bare'): 0.8,
+('Surface Applied', 'April vegetated'): 0.6,
+'Incorp. / moldboard': 0.05,
+'Incorp. / chisel': 0.25,
+'Incorp. / disk': 0.40,
+'Inj. or subsurf. banded': 0
 }
 
+def getFertFactor(method, date):
+    if method=='Surface Applied':
+        return fertilizer_app_dict[(method, date)]
+    elif method=='not incorporated':
+        return 1
+    elif method:
+        return fertilizer_app_dict[method]
+    else:
+        return 0
+    
 manure_method_dict={
         'Inject': 0,
         'subsurf. band': 0,
@@ -172,6 +197,16 @@ def incorp_timing(days, method):
     else:
         return 1
     
+uptake_dict={'Corn & other row crops': 100,
+ 'Row crop + successful cover crop': 50,
+ 'Small grains': 50,
+ 'Alfalfa & other hay crops': 50,
+ 'Pasture': 0,
+ 'Vegetable crop - clean cultivated': 50,
+ 'Vegetable crop - mulch or living row cover': 50,
+ 'Vegetable crop - vining or high canopy': 50}
+
+
 
 def manure_factor(manure_date, method, time_to_incorp):
     '''Calculate the manure factor for surface runoff.
