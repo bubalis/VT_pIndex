@@ -2,3 +2,6 @@
 *.tif
 /Source_data
 /intermediate_data
+/test_results
+.xlsx
+/__pycache__
