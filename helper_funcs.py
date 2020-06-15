@@ -164,13 +164,16 @@ def manure_timing(date, vegetation):
     elif 275>=day_of_year<350:
         return 1
 '''
+
 manure_timing_dic={'May - Sept': 0.5,
 'Oct - Dec 15': 1.0,
 'Dec 15 - March': 1.3,
 'April - bare': 0.8,
 'April - vegetated': 0.6,
 'None applied': 0}
+
 def manure_timing(manure_date):
+    '''Get manure timing factor.'''
     return manure_timing_dic[manure_date]
 
 

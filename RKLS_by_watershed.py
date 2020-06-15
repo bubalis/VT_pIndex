@@ -52,7 +52,6 @@ def getLS(slope_val, flow_acc):
     return 1.4*(flow_acc/22.13)**.4*(math.sin(math.tan(slope_val/100))/.0896)**1.3
 
 
-
 @np.vectorize
 def enforce_non_neg(x):
     '''Clean data for running raster calculations.'''
@@ -318,10 +317,10 @@ def main(county_code):
     All rasters for a given watershed are saved to a directory of that name. '''
     
     aoi_path=os.path.join(os.getcwd(), 'intermediate_data', f'Geologic_{county_code}_poly.shp')
+    
     dems_dir=os.path.join(os.getcwd(), 'source_data', 'DEM_rasters')
     
     main_out_dir=os.path.join(os.getcwd(), 'intermediate_data', 'USLE')
-    
     
     watershed_path=os.path.join(os.getcwd(), 'source_data', 'VT_Subwatershed_Boundaries_-_HUC12-shp', 'VT_Subwatershed_Boundaries_-_HUC12.shp')
 
