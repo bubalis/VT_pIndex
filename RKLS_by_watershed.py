@@ -26,7 +26,7 @@ from rasterio.enums import Resampling
 #%%
 def get_tileNum(row):
      for col in [c for c in row.index if 'TILENUM' in c]:
-         if row[col]:
+         if type(row[col])==str:
              return row[col]
          
 def give_first_valid(iterable):
@@ -46,11 +46,14 @@ def merge_tiles(tiles_1, tiles_2):
 @np.vectorize
 def getLS(slope_val, flow_acc):
     '''LS value from a cell.
-    From https://jblindsay.github.io/wbt_book/available_tools/geomorphometric_analysis.html'''
+    From https://jblindsay.github.io/wbt_book/available_tools/geomorphometric_analysis.html#SedimentTransportIndex'''
     if flow_acc<0:
         return 0
-    return 1.4*(flow_acc/22.13)**.4*(math.sin(math.tan(slope_val/100))/.0896)**1.3
-
+    if slope_val<0:
+        return 0
+    slope_rads=math.tan(slope_val/100) #https://www.archtoolbox.com/representation/geometry/slope.html
+    res= 1.4*((flow_acc/22.13)**.4)*(math.sin(slope_rads)/.0896)**1.3
+    return res
 
 @np.vectorize
 def enforce_non_neg(x):
@@ -91,7 +94,7 @@ def extract_K_facs(LS_raster, soil_shp, out_dir):
         
 def calculateRKLS(directory, soil_shp):
     '''Run all steps toCalculate the erosion potential raster for a given Watershed.'''
-    dem_path=os.path.join(directory, 'H2O_shed_DEM.tif')  
+    dem_path=os.path.join(directory, 'H2O_shed_DEM.img')  
     LS_raster=calculateLS(dem_path, directory)
     k_raster=extract_K_facs(LS_raster, soil_shp, directory)
     makeRKLS_raster(LS_raster, k_raster, directory)
@@ -117,12 +120,12 @@ def makeRKLS_raster(LS_raster, k_raster, out_dir):
 def calculateLS(dem_path, out_dir):
     '''Calculate the length-slope factor using routines from pygeoprocessing.'''
     
-    stream_path=os.path.join(out_dir, 'stream.tif')
-    pit_filled_dem_path=os.path.join(out_dir, 'pit_filled_dem.tif')
-    slope_path=os.path.join(out_dir, 'slope_raster.tif')
-    flow_direction_path=os.path.join(out_dir, 'flow_direction.tif')
+    stream_path=os.path.join(out_dir, 'stream.img')
+    pit_filled_dem_path=os.path.join(out_dir, 'pit_filled_dem.img')
+    slope_path=os.path.join(out_dir, 'slope_raster.img')
+    flow_direction_path=os.path.join(out_dir, 'flow_direction.img')
     #avg_aspect_path=os.path.join(out_dir, 'avg_aspect.img')
-    flow_accumulation_path=os.path.join(out_dir, 'flow_acc.tif')
+    flow_accumulation_path=os.path.join(out_dir, 'flow_acc.img')
     #ls_factor_path=os.path.join(out_dir, 'ls.img')
     #rkls_path=os.path.join(out_dir, 'rkls.img')
     threshold_flow_accumulation=1
@@ -211,24 +214,24 @@ def resize_raster(filepath, factor):
     with rasterio.open(filepath, 'w', **out_meta) as dest:
         dest.write(data)
 
-
-def watershed_raster(HUC12, H2Oshed_tiles, dems_dir, out_dir):
-    '''Make a DEM raster for a watershed. Save it as out_dir\dem. '''
+#%%
+def merge_tiles_raster(tile_codes, dems_dir):
+    '''Merge a set of rasters, given a list of tile_codes 
+    and a directory that they are located in.
+    Return the raster, its out-transoform and out_metadata.'''
     
-    #collect rasters to merge together
     src_to_merge=[]
-    files=os.listdir(dems_dir)
-    for code in H2Oshed_tiles[HUC12]:
-        files=[f for f in files if code in f]
+    file_list=os.listdir(dems_dir)
+    for code in tile_codes:
+        files=[f for f in file_list if code in f]
         if files:
             src_to_merge.append(rasterio.open(os.path.join(dems_dir, files[0])))
     
     if not src_to_merge:
-        return 
+        return
     
     rast, out_transform=merge(src_to_merge)
     
-    #set raster profile to be same as src but with different shape/xform:
     out_meta = src_to_merge[0].meta.copy()
     out_meta.update({"driver": "GTiff",
                      "height": rast.shape[1],
@@ -237,11 +240,32 @@ def watershed_raster(HUC12, H2Oshed_tiles, dems_dir, out_dir):
                     }
                    )
     
-    
-    out_path=os.path.join(out_dir, 'H2O_shed_DEM.tif')
-    
     for r in src_to_merge:
         r.close()
+        
+    return rast, out_transform, out_meta
+#%%   
+def aoi_raster(tiles, dems_dir, out_dir):
+    rast, out_transform, out_meta=merge_tiles_raster(tiles, dems_dir)
+    out_path=os.path.join(out_dir, 'DEM.tif')
+    #plt.imshow(rast[0])
+    plt.show()
+    with rasterio.open(out_path, "w", **out_meta) as dest:
+        dest.write(rast)
+
+
+
+def watershed_raster(HUC12, H2Oshed_tiles, dems_dir, out_dir):
+    '''Make a DEM raster for a watershed. Save it as out_dir\dem. '''
+    
+    #collect rasters to merge together
+    
+    tile_codes=H2Oshed_tiles[HUC12]
+    print(tile_codes)
+    rast, out_transform, out_meta=merge_tiles_raster(tile_codes, dems_dir)
+    
+    out_path=os.path.join(out_dir, 'H2O_shed_DEM.img')
+    
     
     plt.imshow(rast[0])
     plt.show()
@@ -250,8 +274,7 @@ def watershed_raster(HUC12, H2Oshed_tiles, dems_dir, out_dir):
     
     
     
-    
-    #resize_raster(out_path, 2)
+    resize_raster(out_path, 4)
     
 
 
@@ -275,7 +298,7 @@ def make_H2Oshed_tiles(aoi_path, ref_map, watershed_path):
     aoi['null']=0
     aoi=aoi.dissolve(by='null')[['geometry', 'AREASYMBOL']]
     ref_map.to_crs(crs, inplace=True)
-    aoi['geometry']=aoi.buffer(200)
+    aoi['geometry']=aoi.buffer(800)
     ref_map2=gpd.overlay(aoi, ref_map, how='intersection')
     ref_map2.plot()
     out_path=os.path.join(os.getcwd(), 'intermediate_data', 'cells.shp')
@@ -301,28 +324,45 @@ def make_H2Oshed_tiles(aoi_path, ref_map, watershed_path):
     H2Oshed_tiles={}
     for H2Oshed in ext['HUC12'].unique():
         df=ext[ext['HUC12']==H2Oshed]
-        H2Oshed_tiles[H2Oshed]=[t for t in df['TILENUMBER'].unique() if type(t)==str]
+        H2Oshed_tiles[H2Oshed]=[t for t in df['TILENUMBER'].unique() if (type(t)==str or type==int) ]
     
     df=None
-    ext=None
+    
     next_map=None
     
-    return H2Oshed_tiles
+    return H2Oshed_tiles, ext
 #%%
-
-#%%
-
-def main(county_code):
-    '''Run RKLS and intermediate steps for all HUC12 watersheds in the county.
-    All rasters for a given watershed are saved to a directory of that name. '''
+def make_aoi_tiles(aoi_path, ref_map):
+    aoi=gpd.read_file(aoi_path)
+    crs=aoi.crs
+    aoi['null']=0
+    aoi=aoi.dissolve(by='null')[['geometry', 'AREASYMBOL']]
+    ref_map.to_crs(crs, inplace=True)
+    aoi['geometry']=aoi.buffer(200)
+    ref_map2=gpd.overlay(aoi, ref_map, how='intersection')
+    ref_map2.plot()
+    out_path=os.path.join(os.getcwd(), 'intermediate_data', 'cells.shp')
     
+    ref_map2.to_file(out_path)
+    ref_map2.plot()
+    
+    
+    ref_map=None
+    
+    
+    plt.show()
+    tiles= [t for t in ref_map2['TILENUMBER'].unique() if type(t)==str]
+    print(tiles)
+    return tiles
+
+#%%
+def main_full_aoi(county_code):
     aoi_path=os.path.join(os.getcwd(), 'intermediate_data', f'Geologic_{county_code}_poly.shp')
     
     dems_dir=os.path.join(os.getcwd(), 'source_data', 'DEM_rasters')
     
     main_out_dir=os.path.join(os.getcwd(), 'intermediate_data', 'USLE')
     
-    watershed_path=os.path.join(os.getcwd(), 'source_data', 'VT_Subwatershed_Boundaries_-_HUC12-shp', 'VT_Subwatershed_Boundaries_-_HUC12.shp')
 
 
     #read in reference maps of the DEM raster grid into one shapefile
@@ -342,28 +382,87 @@ def main(county_code):
         ref_map=merge_tiles(ref_map, next_map)
     m=None    
     ref_map.plot()
-    plt.show()
+    
     
     
     soil_shp= os.path.join(os.getcwd(), 'intermediate_data', f'Geologic_{county_code}_poly.shp') 
+    
+    out_dir=os.path.join(os.getcwd(), 'intermediate_data', 'USLE', county_code)
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    soil_shp= os.path.join(os.getcwd(), 'intermediate_data', f'Geologic_{county_code}_poly.shp') 
+    tiles=make_aoi_tiles(aoi_path, ref_map)
+    aoi_raster(tiles, dems_dir, out_dir)
+    calculateRKLS(out_dir, soil_shp)
+    return tiles
+    
+
+
+def make_ref_map(dems_dir):
+    '''Create a Reference map of available tiles'''
+    ref_maps=[]
+    for p in [f for f in os.listdir(dems_dir) if os.path.isdir(os.path.join(dems_dir, f))]:
+        path=os.path.join(dems_dir, p, f'{p[1:]}.shp')
+        print(path)
+        m=gpd.read_file(path)
+        ref_maps.append(m)
+   
+    
+    #combine into one ref map
+    ref_map=ref_maps.pop()
+    while ref_maps:
+        next_map=ref_maps.pop()
+        next_map.to_crs(ref_map.crs, inplace=True)
+        ref_map=merge_tiles(ref_map, next_map)
+    m=None    
+    ref_map.plot()
+    plt.show()
+    return ref_map
+
+
+def main_by_watershed(county_code):
+    '''Run RKLS and intermediate steps for all HUC12 watersheds in the county.
+    All rasters for a given watershed are saved to a directory of that name. '''
+    
+    aoi_path=os.path.join(os.getcwd(), 'intermediate_data', f'Geologic_{county_code}_poly.shp')
+    
+    dems_dir=os.path.join(os.getcwd(), 'source_data', 'DEM_rasters')
+    
+    main_out_dir=os.path.join(os.getcwd(), 'intermediate_data', 'USLE')
+    
+    watershed_path=os.path.join(os.getcwd(), 'source_data', 'VT_Subwatershed_Boundaries_-_HUC12-shp', 'VT_Subwatershed_Boundaries_-_HUC12.shp')
+
+
+    #read in reference maps of the DEM raster grid into one shapefile
+    
+    ref_map=make_ref_map(dems_dir)
+    
+    soil_shp= os.path.join(os.getcwd(), 'intermediate_data', f'Geologic_{county_code}_poly.shp') 
   
-    H2Oshed_tiles=make_H2Oshed_tiles(aoi_path, ref_map, watershed_path)
+    H2Oshed_tiles, ext=make_H2Oshed_tiles(aoi_path, ref_map, watershed_path)
     for HUC12_code in H2Oshed_tiles:    
         print(HUC12_code)
         out_dir=os.path.join(main_out_dir, HUC12_code)
-        if (not os.path.exists(out_dir)) and H2Oshed_tiles[HUC12_code]:
+        if all([(not os.path.exists(out_dir)),
+                HUC12_code in ext['HUC12'].unique(),
+                H2Oshed_tiles[HUC12_code]
+                ]):
             os.makedirs(out_dir)
-            watershed_raster(HUC12_code, H2Oshed_tiles, dems_dir, out_dir)
             
-            #save a list of tiles in the watershed
+            watershed_raster(HUC12_code, H2Oshed_tiles, dems_dir, out_dir)
+            calculateRKLS(out_dir, soil_shp)
             with open(os.path.join(out_dir, f'tiles.txt'), 'w') as f:
                 for line in H2Oshed_tiles[HUC12_code]:
                     print(line, file=f)
             
-            calculateRKLS(out_dir, soil_shp)
+            #save a list of tiles in the watershed
+            
+            
+            
             
 if __name__=='__main__':
     county_code='SO01'
-    main(county_code)
+    main_by_watershed(county_code)
     
-    
+
+#%%

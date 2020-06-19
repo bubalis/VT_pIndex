@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document id="root_doc">
+    <Schema id="maxima" name="maxima">
+      <SimpleField name="AREASYMBOL_1" type="string"/>
+      <SimpleField name="OBJECTID" type="string"/>
+      <SimpleField name="TNMID" type="string"/>
+      <SimpleField name="LoadDate" type="string"/>
+      <SimpleField name="GNIS_ID" type="string"/>
+      <SimpleField name="AreaAcres" type="string"/>
+      <SimpleField name="AreaSqKm" type="float"/>
+      <SimpleField name="States" type="string"/>
+      <SimpleField name="HUC12" type="string"/>
+      <SimpleField name="HUType" type="string"/>
+      <SimpleField name="HUMod" type="string"/>
+      <SimpleField name="ToHUC" type="string"/>
+      <SimpleField name="NonContrib" type="float"/>
+      <SimpleField name="NonContr_1" type="float"/>
+      <SimpleField name="ShapeSTAre" type="float"/>
+      <SimpleField name="ShapeSTLen" type="float"/>
+      <SimpleField name="AREASYMBOL_2" type="string"/>
+      <SimpleField name="CROP_COVER" type="string"/>
+      <SimpleField name="SOIL_DOM" type="string"/>
+      <SimpleField name="IDNUM" type="string"/>
+      <SimpleField name="Area" type="float"/>
+      <SimpleField name="K_Factors" type="float"/>
+      <SimpleField name="LS" type="float"/>
+      <SimpleField name="RKLS" type="float"/>
+      <SimpleField name="flow_acc" type="float"/>
+      <SimpleField name="slope" type="float"/>
+    </Schema>
+    <Document id="maxima">
+      <name>maxima</name>
+    </Document>
+  </Document>
+</kml>

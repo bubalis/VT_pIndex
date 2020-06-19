@@ -75,7 +75,7 @@ def list_links(b_url):
     return [link.get('href') for link in soup.find_all('a')]
 
 def retrieve(county_code):
-    '''Get'''
+    '''Get all tiles relevant to a given '''
     
     base_urls=['https://maps.vcgi.vermont.gov/gisdata/vcgi/lidar/0_7M/2015/DEMHE/',
                'https://maps.vcgi.vermont.gov/gisdata/vcgi/lidar/0_7M/2017/DEMHF/',
@@ -90,11 +90,14 @@ def retrieve(county_code):
     watershed_path=os.path.join(os.getcwd(), 'source_data', 'VT_Subwatershed_Boundaries_-_HUC12-shp')   
     h2oshed=gpd.read_file(watershed_path)
     aoi_path=os.path.join(os.getcwd(), 'intermediate_data', f'Geologic_{county_code}_poly.shp')
-    aoi=gpd.read_file(aoi_path)
-    aoi['null']=1
-    aoi=aoi.dissolve(by='null')
-    aoi=gpd.overlay(aoi, h2oshed, how='union')
-
+    county=gpd.read_file(aoi_path)
+    county['null']=1
+    county=county.dissolve(by='null')
+    aoi=gpd.overlay(county, h2oshed, how='intersection')
+    aoi=h2oshed[h2oshed['HUC12'].isin(aoi['HUC12'].unique())]
+    aoi.plot( column='HUC12')
+    plt.show()
+    
     directory=os.path.join('source_data', 'DEM_rasters')
     
     for b_url in base_urls:
@@ -109,16 +112,20 @@ def retrieve(county_code):
             #load the reference map 
             ref_map_file=[f for f in os.listdir(file_name[:-4]) if f[-4:]=='.shp'][0]
             ref_map=gpd.read_file(os.path.join(file_name[:-4], ref_map_file))
+            ax=aoi.plot()
+            
+            ref_map.plot(color='r', )
+            plt.show()
             
             #crop the ref_map to the area of interest
             ref_map=ref_map.to_crs(aoi.crs)
-            ref_map=gpd.overlay(ref_map, aoi)
-    ref_map.plot()
-                
+            ref_map=gpd.overlay(ref_map, aoi, how='intersection')
+            ref_map.plot()
+            plt.show()
             
     #download all files in aoi        
-    for file_url in ref_map['DOWNLOAD_P'].to_list():
-        download_file(file_url, directory)
+        for file_url in ref_map['DOWNLOAD_P'].to_list():
+            download_file(file_url, directory)
     return directory
 """
 def merge_rasters(directory, out_name='merged.img'):
@@ -134,7 +141,7 @@ def merge_rasters(directory, out_name='merged.img'):
     cmd = f'python C:\\Users\\benja\\anaconda3\\Scripts\\gdal_merge.py -o {os.path.join(os.getcwd(), directory, out_name)} -q -v --optfile {os.path.join(os.getcwd(), directory, "raster_list.txt")}'
     subprocess.call(cmd, shell=True)
   """   
-    
+
 #%%
    
 
