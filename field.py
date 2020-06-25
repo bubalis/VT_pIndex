@@ -3,13 +3,19 @@
 Created on Thu May  7 09:46:24 2020
 
 @author: benja
+
+This script defines all of the base classes and functions to run the pIndex.'''
+
 """
 
 from helper_funcs import lookupBRV, lookup_RAF, get_soil_hyd_factor, manure_factor, getFertFactor, uptake_dict
 import numpy as np
 
 class CropField():
+    '''A single field to calculate the p Index for.'''
+    
     def calcPindex(self):
+        '''Calculate the p Index for this field.'''
         self.results['surface particulate loss']= self.surf_particulate_loss()
         self.results['surface dissolved loss']= self.surf_dissolved_loss()
         self.results['subsurface_loss']=self.subsurface_loss()
@@ -21,14 +27,16 @@ class CropField():
     
     
     def setup_data(self):
-        '''Calculate needed parameters from loaded data.'''
+        '''Calculate needed parameters from existing data.
+        This routine setss factors necessary for the pIndex that are
+        deterministically calculated from loaded in data.
+        '''
         
         self.params['soil_total_phos']=calc_soilTP(self.params['soil_test_phos'], self.params['soil_is_clay'])
         self.params['runoff_adj_factor']=lookup_RAF(self.params['hydro_group'], self.params['veg_type'], self.params['cover_perc'], self.params['tile_drain'])
         self.params["baseROV"]=lookupBRV(self.params['county'], self.params['elevation'])
         
-        self.manure_applications=self.params['manure_applications']
-        self.fertilizer_applications=self.params['fertilizer_applications']
+        
         
         self.params['hydro_factor']=get_soil_hyd_factor(self.params['hydro_group'], self.params['tile_drain'])
         self.params['RDR_factor']=calcRDR(**self.params)
@@ -39,16 +47,16 @@ class CropField():
         self.add_soil_P()
     
     
-    def sim_parameters(self):
-        '''Simulate parameters that we do not have data for'''
-        pass
-        
-        
+  
+               
     
     def sum_fractions(self, functions_to_sum, default_args={}):
-        '''Return the sum of multiple functions, with all of the field's parameters passed to that function.'''
+        '''Return the sum of multiple functions, with all of the field's parameters passed to that function.
+        Default args can be used to overide parameters of the field object.'''
+        
         kwargs={**self.params,**default_args}
         s=0
+        
         for function in functions_to_sum:
             result=function(**kwargs)
             self.results[function.__name__]=result
@@ -56,17 +64,18 @@ class CropField():
         return s
     
     def surf_particulate_loss(self, scaling_factor=80):
-        '''Surface Particulate P loss'''
+        '''Surface Particulate P loss.'''
         return self.sum_fractions([erodedSoilP, manure_partic_P]) *scaling_factor
    
     
     def surf_dissolved_loss(self, scaling_factor=80):
-        '''Surface Dissolved P loss'''
+        '''Surface Dissolved P loss.'''
         return self.sum_fractions([dis_soilP, dis_manureP, fertilizerP,])*scaling_factor
    
     
     def subsurface_loss(self, scaling_factor=80):
         '''Subsurface loss from tile drainage. Page 10-11 of technical docs. '''
+        
         PF6=.2
         default_args={'SDR_factor':1, 
                       'RDR_factor':1, 
@@ -86,6 +95,8 @@ class CropField():
         
     def link_to_apps(self):
         '''Set linkages between p applications and field object.'''
+        self.manure_applications=self.params['manure_applications']
+        self.fertilizer_applications=self.params['fertilizer_applications']
         self.params['total_p_added']=sum([app.rate for app in self.manure_applications+self.fertilizer_applications])
         for app in self.manure_applications+self.fertilizer_applications:
             app.link_to_field(self)
@@ -115,32 +126,15 @@ original soil test P. The estimate cannot be greater than this limiting value.
                                            self.params['soil_total_phos']+added_TP])
         self.params['adj_test_phos']=adj_stp
                    
-                  
-    
-    
-    
-def CropFieldFirstRun(CropField):
-    '''Initate class for a field for the first time.'''
-    def __init__(self):
-        self.get_parameters()
-    
-    def get_parameters(self):
-        self.known_params={}
-        self.known_params['baseROV']=lookupBRV(**self.known_params)
+                      
+
+        
+        
    
     
     
     
-class CropFieldFromSave(CropField):
-    '''Initiate a class from saved data.
-    Pass a dictionary of known parameters'''
-    def __init__(self, key, data):
-        self.known_params=data[key]
-        
-        
-    def sim(self):
-        self.sim_params=self.sim_parameters()
-        self.params={**self.known_params, **self.sim_params}
+
     
     
 
@@ -150,7 +144,9 @@ class CropFieldFromDic(CropField):
         self.setup_data()
         
     
-        
+
+
+
         
 def calc_soilTP(test_phos, soil_is_clay):
     '''Calculated total phosphorus from test_phos. 
@@ -302,18 +298,7 @@ final SDR    '''
     
 
 
-'''Variables Needed:
-    sed_cntrl_structure_fact (simulate)
-    buffer_width (from GIS?)
-    distance_to_water (from GIS)
-    Al_level (simulate)
-    fertilizer_rate (simulate)
-    manure_rate (simulate)
-    vegetation levels/crop types at different time series: simulate/from GIS
-    soil_test_phosphorus: simulate
-    
-    
-    '''   
+
 
      
 def al_factor_soilP(al_level):
@@ -360,7 +345,8 @@ class pApplication(object):
        
         
     def link_to_field(self, field):
-        '''Link P_application to its field.'''
+        '''Link P_application to its field,
+        calculate all relevant outputs.'''
         self.field=field
         self.Al_factor_runoff=aluminum_factor_runoff(self.field.params['Al_level'], self.incorp_method)
         self.Al_factor_soil=self.field.params['soil_al_factor']  
@@ -390,8 +376,13 @@ class pApplication(object):
             self.incr=incr
         else:   
             self.incr=0
-            
-            
+      
+    
+      
+
+
+
+ 
 class fertApplication(pApplication):
     '''A fertilzer application.
     Rate: fertilizer in lbs P2O5 per acre.
@@ -401,6 +392,9 @@ class fertApplication(pApplication):
         self.date=date
         self.rate=rate
         self.method_factor=getFertFactor(self.incorp_method, self.date)
+    
+
+
     
     def calcDisPloss(self):
         '''Calculate Fertilizer P loss at edge-of-field.
@@ -440,8 +434,14 @@ The Aluminum and Fertilizer Factors are explained above.
             mf=1
         return self.incr*self.Al_factor_soil *mf
     
+    
 
     
+
+
+
+
+        
     
 class manureApplication(pApplication):
     '''A manure application.
@@ -459,7 +459,6 @@ class manureApplication(pApplication):
         self.type=Type
         self.manure_factor=manure_factor(self.date, self.incorp_method, self.time_to_incorp, )
         
-    
     
         
     def calcParticLoss(self):
@@ -502,4 +501,6 @@ class manureApplication(pApplication):
         else:
             mf=1
         return self.incr*.44/2*mf
+
+
 

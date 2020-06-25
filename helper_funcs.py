@@ -59,7 +59,31 @@ runoff_adj_dict={'Corn & other row crops': [0.42, 0.25, 1.00, 0.75, 1.96, 1.48, 
 'Pasture': [0, 0.02, 0, 0.30, 0, 1.08, 0, 1.82,] ,
 'CRP, other ungrazed, perm. veg.': [0, 0.01, 0, 0.12, 0, 0.50, 0, 1.00], 
 'Woodland': [0, 0.01, 0, 0.15, 0, 0.62, 0, 1.10],
-}
+'Hay': [0, 0.12, 0, 0.55, 0, 1.37, 0, 1.98]}
+
+def runoff_parser(crop_name, cover_crop):
+    if crop_name in runoff_adj_dict:
+        return crop_name
+    elif crop_name in ['Corn', 'Soy']:
+        if cover_crop==True:
+            return 'Row crop + successful cover crop'
+        else:
+            return 'Corn & other row crops'
+    elif crop_name=='Small grain':
+        return 'Small Grains'
+    elif crop_name=='Hay':
+        return 'Alfalfa & other hay crops'
+    elif crop_name=='Fallow':
+        return 'CRP, other ungrazed, perm. veg.'
+    else:
+        raise ValueError
+    
+    
+
+
+
+
+
 
 hydro_groups=['A',
               'B',
@@ -122,6 +146,8 @@ fertilizer_app_dict={
 ('Surface Applied', 'December 15-March'): 1.3,
 ('Surface Applied', 'April bare'): 0.8,
 ('Surface Applied', 'April vegetated'): 0.6,
+('Surface Applied', 'April -  bare'): 0.8,
+('Surface Applied', 'April - vegetated'): 0.6,
 'Incorp. / moldboard': 0.05,
 'Incorp. / chisel': 0.25,
 'Incorp. / disk': 0.40,
@@ -146,7 +172,14 @@ manure_method_dict={
 'Chisel': 0.25,
 'Disk': 0.4,
 'Not incorporated': 1.0,
-'None applied': 0}
+'None applied': 0,
+'moldboard':.05,
+'chisel':.25,
+'not_incorporated':1,
+'inject':0
+
+
+}
 
 
 '''
@@ -170,7 +203,11 @@ manure_timing_dic={'May - Sept': 0.5,
 'Dec 15 - March': 1.3,
 'April - bare': 0.8,
 'April - vegetated': 0.6,
-'None applied': 0}
+'None applied': 0, 
+'summer': .5,
+'fall': 1.0,
+'winter': 1.3,
+'spring': .8}
 
 def manure_timing(manure_date):
     '''Get manure timing factor.'''
