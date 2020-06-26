@@ -30,11 +30,15 @@ def get_tileNum(row):
              return row[col]
          
 def give_first_valid(iterable):
+    '''Return the first non ''Falsy' value in an iterable'''
+    
     for i in iterable:
         if i:
             return i
 
 def merge_tiles(tiles_1, tiles_2):
+    '''Merge two tile geometries'''
+    
     tiles_2.to_crs(tiles_1.crs)
     merged=gpd.overlay(tiles_1, tiles_2, how='union')
     merged['TILENUMBER']=merged.apply(get_tileNum, axis=1)
@@ -106,6 +110,7 @@ def makeRKLS_raster(LS_raster, k_raster, out_dir):
     print(time.localtime())
     print('Making RKLS raster')
     profile=LS_raster.profile
+    
     LS_data=LS_raster.read(1)
     k_data=k_raster.read(1)
     
@@ -118,17 +123,26 @@ def makeRKLS_raster(LS_raster, k_raster, out_dir):
         dst.write(RKLS_vals.astype(rasterio.float32), 1)    
 
 def calculateLS(dem_path, out_dir):
-    '''Calculate the length-slope factor using routines from pygeoprocessing.'''
+    '''Calculate the length-slope factor using routines from pygeoprocessing.
+    Return the opened LS raster. '''
     
+    #set out_paths of raster to be generated. 
     stream_path=os.path.join(out_dir, 'stream.img')
     pit_filled_dem_path=os.path.join(out_dir, 'pit_filled_dem.img')
     slope_path=os.path.join(out_dir, 'slope_raster.img')
     flow_direction_path=os.path.join(out_dir, 'flow_direction.img')
-    #avg_aspect_path=os.path.join(out_dir, 'avg_aspect.img')
     flow_accumulation_path=os.path.join(out_dir, 'flow_acc.img')
+    
+    #avg_aspect_path=os.path.join(out_dir, 'avg_aspect.img')
+    
+    
+    
+    
+    
     #ls_factor_path=os.path.join(out_dir, 'ls.img')
     #rkls_path=os.path.join(out_dir, 'rkls.img')
     threshold_flow_accumulation=1
+    
     #aligned_drainage_path=False
     #stream_and_drainage_path=stream_path
     
@@ -153,8 +167,11 @@ def calculateLS(dem_path, out_dir):
             float(threshold_flow_accumulation),
             stream_path,)
     except:
+        print('Routing Error')
         pass
     
+    #load in data for calculating LS:
+        
     with rasterio.open(slope_path) as slope_raster:
         slope_array=slope_raster.read(1)
     with rasterio.open(flow_accumulation_path) as flow_acc_raster:
@@ -169,7 +186,6 @@ def calculateLS(dem_path, out_dir):
     LS=getLS(slope_array, flow_array)
     slope_array=None
     flow_array=None
-    
     
     with rasterio.open(dem_path) as dem:
         profile=dem.profile
@@ -246,10 +262,11 @@ def merge_tiles_raster(tile_codes, dems_dir):
     return rast, out_transform, out_meta
 #%%   
 def aoi_raster(tiles, dems_dir, out_dir):
+    '''Make a raster of the DEM of an aoi defined by a set of tiles. '''
+    
     rast, out_transform, out_meta=merge_tiles_raster(tiles, dems_dir)
     out_path=os.path.join(out_dir, 'DEM.tif')
     #plt.imshow(rast[0])
-    plt.show()
     with rasterio.open(out_path, "w", **out_meta) as dest:
         dest.write(rast)
 
@@ -273,7 +290,7 @@ def watershed_raster(HUC12, H2Oshed_tiles, dems_dir, out_dir):
         dest.write(rast)
     
     
-    
+    #resize the raster
     resize_raster(out_path, 4)
     
 
@@ -293,6 +310,8 @@ def make_H2Oshed_tiles(aoi_path, ref_map, watershed_path):
         key- HUC12 number.
         value: list of all DEM tiles needed to perform calculatons. 
     '''
+    
+    
     aoi=gpd.read_file(aoi_path)
     crs=aoi.crs
     aoi['null']=0

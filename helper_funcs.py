@@ -7,6 +7,7 @@ Created on Thu May  7 11:23:33 2020
 import datetime
 import csv
 import string
+import math
 
 
 
@@ -45,9 +46,13 @@ def lookupBRV(county, elevation):
         return values[1]
     elif 1000<elevation<6000:
         return values[2]
+    elif elevation<0 or math.isnan(elevation):
+        print(f'{elevation} not valid assigning to 0')
+        return values[0]
+    
     else:
-        print(f'{elevation} not valid')
-        raise ValueError 
+        print(f'{elevation}  not valid')
+        raise ValueError
         
 runoff_adj_dict={'Corn & other row crops': [0.42, 0.25, 1.00, 0.75, 1.96, 1.48, 2.65, 1.98],
 'Row crop + successful cover crop': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82], 

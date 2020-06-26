@@ -6,13 +6,12 @@ Script for simulating p index from shapefiles.
 """
 import os
 import sim_variables
-from field_geodata import main as field_geodata
 from field import CropField, manureApplication, fertApplication
 import geopandas as gpd
 import numpy as np
 
 
-
+#globablly defined dictionaries.
 manure_method_conversion_dic={**{
     'inject':'Inject / subsurf. band',
     'not_incorporated': 'Not incorporated',
@@ -38,18 +37,21 @@ f_date_conversion_dic={'summer' :'May-September',
  'winter': 'December 15-March' }
 
   
-  
+ 
+
+ 
 class CropFieldFromShp(CropField):
     '''Initate class from a series from a shapefile.'''
-    def __init__(self, series, variable_objs):
+    def __init__(self, series, ):
         if series['crop_type']=='Other Crop':
             series['crop_type']='Small_Grain'
         self.known_params=series.to_dict()
         self.idnum=self.known_params['IDNUM']
+    
+    def initialize_sim(self, variable_objs):
         self.simulate_params(variable_objs)
         self.setup_data()
         self.USLE()
-        
         
         
     def simulate_params(self, variable_objs):
@@ -78,10 +80,10 @@ class CropFieldFromShp(CropField):
         self.sim_params['veg_type']=self.get_veg_type()
         
         #simulate manure/fertilizer applications
-        self.gen_Manure()
-        self.gen_Fert()
+        self.gen_Manure(variable_objs)
+        self.gen_Fert(variable_objs)
         
-        
+    
           
         
         
@@ -97,7 +99,7 @@ class CropFieldFromShp(CropField):
             return veg_type_dict[self.known_params['crop_type']]
 
 
-    def gen_Manure(self):
+    def gen_Manure(self, variable_objs):
         '''Generate Manure Applications for this field with simulated data. '''
         
         self.sim_params['manure_applications']=[]
@@ -116,10 +118,10 @@ class CropFieldFromShp(CropField):
    
         
    
-     def gen_Fert(self):
+    def gen_Fert(self, variable_objs):
          '''Generate Fertilizer Applications for this field with simulated data. '''
-        self.sim_params['fertilizer_applications']=[]
-        for i in range(int(self.sim_params['num_fert_applications'])):
+         self.sim_params['fertilizer_applications']=[]
+         for i in range(int(self.sim_params['num_fert_applications'])):
             fertilizer_params={'p_rate':5}
             
             for p_var in ['p_incorp_method',
@@ -129,14 +131,21 @@ class CropFieldFromShp(CropField):
                 fertilizer_params[f'{p_var}']=variable_objs[f'{p_var}'].draw(**params)
             fertilizer_params={key[2:]:value for key, value in fertilizer_params.items()}                      
             self.sim_params['fertilizer_applications'].append(SimFert(field=self, **fertilizer_params))
-        self.params={**self.sim_params, **self.known_params}          
+         self.params={**self.sim_params, **self.known_params}          
      
-     def USLE(self):
+    def USLE(self):
          #to do: set C and P params for USLE
-        self.params['C']=.5
-        self.params['P']=1
+        if self.params['crop_type']=='Corn':
+            self.params['C']=.5
+           
+        elif self.params['crop_type']=='Small_Grain':
+            self.params['C']=.3
+        elif self.params['crop_type']=='Hay':
+            self.params['C']=.1
+        else:
+            self.params['C']=.005
         
-        self.params[]
+        self.params['P']=.8 #P will actually have to be simulated!
         self.params['erosion_rate']=np.product([self.params[n] for n in ['RKLS', "C", 'P']])
         
 class SimFert(fertApplication):
@@ -191,6 +200,11 @@ class SimManure(manureApplication):
         else:
             return m_date_conversion_dic[date]      
 
+def fix_hydro_group(string):
+    if string=='not rated':
+        return 'B'
+    else:
+        return string
 
 
 class simulation():
@@ -206,24 +220,31 @@ class simulation():
         with open(os.path.join(self.directory, 'column_names.txt')) as f:
             gdf.columns=[line for line in f.read().split('\n') if line]
         gdf['hydro_group']=gdf['hydro_group'].apply(lambda x: x.split('/')[-1])
+        gdf['hydro_group']=gdf['hydro_group'].apply(fix_hydro_group)
         gdf['buffer_width']=gdf['distance_to_water']
+        
+        
         variables_path=r"C:\Users\benja\VT_P_index\model\sim_variables.txt"
-        variable_objs=sim_variables.load_vars_csv(variables_path)
+        self.variable_objs=sim_variables.load_vars_csv(variables_path)
         
         for i, row in gdf.iterrows():
-            self.fields.append(CropFieldFromShp(row, variable_objs))
+            self.fields.append(CropFieldFromShp(row))
             
         
         return self.fields, gdf
     
-    def simPindex(self):
-        for field in self.fields:
-            field.calcPindex()
+    def simPindex(self, n_times=10):
+        self.records=[]
+        for n in range(n_times):
+            for field in self.fields:
+                field.initialize_sim(self.variable_objs)
+                field.calcPindex()
+                self.records.append({**{'Sim Number': n}, **field.params, **field.results})
+        
 
 
-
-field_geodata()
 sim=simulation(os.path.join(os.getcwd(), 'intermediate_data', 'SO01_fields'))
+variables_path=r"C:\Users\benja\VT_P_index\model\sim_variables.txt"
 fields, gdf=sim.load_data()
 sim.simPindex()
 

@@ -96,6 +96,16 @@ def dist_to_water(field, raster, stream_line):
         return 0
     else:
         return dist, point
+    
+def dist_to_water_simple(field, stream_line):
+    '''Shortest euclidean distance between field and any stream.'''
+    
+    distance= field['geometry'].distance(stream_line.iloc[0]['geometry'][0])
+    if distance<4:
+        return 4, None
+    else:
+        return distance, None
+    
   #%%      
 
 #%%
@@ -113,7 +123,10 @@ def all_dist_to_water(cfh2, streams, h2Osheds, usle_path):
         stream_line=streams[streams['HUC12']==HUC12_code].dissolve('HUC12')
         
         for i,field in cfh2[cfh2['HUC12']==HUC12_code].iterrows():
-            dist, point=dist_to_water(field, raster, stream_line)
+            dist, point=dist_to_water_simple(field, stream_line)
+            
+            #deleted complex method of calculating distance to H2O
+            #dist, point=dist_to_water(field, raster, stream_line)
             results.append(dist)
             points.append(point)
     return results, points
@@ -222,7 +235,7 @@ def crop_fields_watersheds(cf, h2Osheds, streams):
     #retreive raster stats for potential erosion, slope and elevation
     cfh2['RKLS']=retrieve_rastervals('RKLS.tif', cfh2, usle_path)
     cfh2['slope']=retrieve_rastervals('slope_raster.img', cfh2, usle_path)
-    cfh2['elevation']=retrieve_rastervals('pit_filled_DEM.img', cfh2, usle_path, stat='max')
+    cfh2['elevation']=retrieve_rastervals('H2O_shed_DEM.img', cfh2, usle_path, stat='max')
     
     
     #calculate distance to water and erosion outflow points
@@ -282,7 +295,7 @@ def set_calculated_values(cf, cfh2):
         
         
         
-    crop_codes_dict={2111: 'Corn', 2121: 'Hay', 2118: 'Small Grain', 2124: 'Fallow'}    
+    crop_codes_dict={2111: 'Corn', 2121: 'Hay', 2118: 'Small_Grain', 2124: 'Fallow'}    
         
     #assign values to original cropfields  gdf
     cf=cf[['IDNUM', 'CROP_COVER', 'geometry', ]]    
@@ -327,24 +340,19 @@ def make_streams(h2Osheds, aoi):
     streams.to_crs(aoi.crs, inplace=True)
     streams=gpd.sjoin(streams, aoi)
         
-        
+    #rivers:    
     river_path=os.path.join(os.getcwd(), 'source_data', 'NHD_H_Vermont_State_Shape', "Shape", 'NHDArea.shp')
+    #ponds, lakes:
     bodies_path=os.path.join(os.getcwd(), 'source_data', 'NHD_H_Vermont_State_Shape', "Shape", 'NHDWaterbody.shp')
-        
-    #load in rivers:
-    rivers=gpd.read_file(river_path)
-    rivers=snip_to_aoi(rivers, aoi)
-    rivers['geometry']=rivers['geometry'].boundary
+    #areas?
+    area_path=os.path.join(os.getcwd(), 'source_data', 'NHD_H_Vermont_State_Shape', "Shape", 'NHDArea.shp')    
     
-    #ponds, lakes etc:
-    bodies=gpd.read_file(bodies_path)
-    bodies=snip_to_aoi(bodies, aoi)
-    bodies['geometry']=bodies['geometry'].boundary
-    
-    #aggregate into single gdf
-    streams=streams.append(rivers)
-    streams=streams.append(bodies)
-    
+    for path in [river_path, bodies_path, area_path]:
+        new_gdf=gpd.read_file(path)
+        new_gdf=snip_to_aoi(new_gdf, aoi)
+        new_gdf['geometry']=new_gdf['geometry'].boundary
+        streams=streams.append(new_gdf)
+ 
     save_path=os.path.join(os.getcwd(), 'intermediate_data', 'waterways.shp')
     streams=streams.drop(columns=['index_right'])
     
@@ -414,7 +422,7 @@ if __name__=='__main__':
     cf, soils, aoi, h2Osheds, usle_path  = set_globals()
     streams=make_streams(h2Osheds, aoi)    
     cfh2=crop_fields_watersheds(cf, h2Osheds, streams)
-    
+    #gpd.GeoDataFrame(geometry=[p[0] for p in cfh2['outflow_points'].tolist()], crs=cf.crs).to_file(os.path.join('intermediate_data', 'outflow_points'))
     cf=set_calculated_values(cf, cfh2)
     
     

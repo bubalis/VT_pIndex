@@ -145,6 +145,13 @@ class echo(prob_dist):
     def draw1(self, **kwargs):
         return kwargs[self.echo_field]
     
+class based_on_function(prob_dist):
+    '''Return a value based on a function. '''
+    def __init__(self, func, function_args):
+        def draw1(self, function_args):
+            return func(function_args)
+
+
     
 def setup_categorical_variable(probabilities):
     ''' 
@@ -202,8 +209,8 @@ class conditional(prob_dist):
             raise ValueError
 
     
-if __name__=='__main__':
-    variables=load_vars_csv('sim_variables.txt')
+
+variables=load_vars_csv('sim_variables.txt')
 
                   
                      

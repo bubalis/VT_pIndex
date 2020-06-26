@@ -23,6 +23,7 @@ class CropField():
         
         self.results['total p loss']=sum(self.results[pathway] for pathway in 
                     ['surface particulate loss', 'surface dissolved loss', 'subsurface_loss'])
+        return self.results
         
     
     
@@ -164,10 +165,13 @@ def erodedSoilP(erosion_rate, adj_test_phos, adj_total_phos,  **kwargs):
     Page 6 of technical docs:  
     1. Sediment (eroded soil) P loss = E * TP * TP Availability * SDR
 The four terms are:
+    
 a. E = Annual soil loss. The RUSLE (ver. 1 or 2) or WEPP edge-of-field erosion rate in
 tons/ac is divided by 500 to convert it to million lb/ac. Annual rather than rotation erosion
 value should be used...
 
+(b is Total Phosphorus)
+...
 c. TP availability factor. Research suggests that only a fraction of the total P in soils is
 available for the growth of algae. This factor ranges from 0.2 (i.e., 20% of TP is algal
 available) at a soil test P of 0 ppm, to a maximum of 0.4 at STP = 100 ppm (based on a
