@@ -29,7 +29,7 @@ class CropField():
     
     def setup_data(self):
         '''Calculate needed parameters from existing data.
-        This routine setss factors necessary for the pIndex that are
+        This function sets factors necessary for the pIndex that are
         deterministically calculated from loaded in data.
         '''
         
@@ -94,6 +94,8 @@ class CropField():
         else:
             return 0
         
+        
+        
     def link_to_apps(self):
         '''Set linkages between p applications and field object.'''
         self.manure_applications=self.params['manure_applications']
@@ -131,15 +133,11 @@ original soil test P. The estimate cannot be greater than this limiting value.
 
         
         
-   
-    
-    
-    
 
-    
     
 
 class CropFieldFromDic(CropField):
+    '''Initialize crop field from a dictionary'''
     def __init__(self, dic):
         self.params=dic
         self.setup_data()
@@ -177,13 +175,12 @@ available for the growth of algae. This factor ranges from 0.2 (i.e., 20% of TP 
 available) at a soil test P of 0 ppm, to a maximum of 0.4 at STP = 100 ppm (based on a
 chemical extraction of Lake Champlain sediments that approximates algal uptake).
 d. SDR = Sediment Delivery Ratio (see Sediment and Runoff Delivery Ratios, above). '''
+    
     return np.product([erosion_rate,
                        .002,    #conversion factor to million lbs per acre
                        adj_total_phos,
                        P_avail_excel(adj_test_phos),
                        SDRsed(**kwargs)])
-
-
 
 
 
@@ -196,6 +193,8 @@ at a soil test P of 0 ppm, to a maximum of 0.4 at STP = 100 ppm
         return .2+adj_test_phos/100*.2
     else:
         return .4
+    
+    
     
 def P_avail_excel(adj_test_phos):
     '''TP availability factor. This formula from the excel spreadsheet'''
@@ -211,7 +210,8 @@ def manure_partic_P(manure_applications, **kwargs):
     sdr=SDRm(buffer=False, **kwargs)
     return sum([m_app.partic_loss for m_app in manure_applications])*sdr*.44
 
-        
+  
+      
 
 def dis_soilP(adj_test_phos, baseROV, runoff_adj_factor, RDR_factor,  **kwargs):
     '''Calculate dissolved P loss.   '''
@@ -232,10 +232,15 @@ concentration in runoff: DRP = 0.1275 + 0.0104 * STP (see Figure 4). Soil test P
 adjusted for any increment due to manure or fertilizer P added since the soil test was made''' 
     return .1275+(.0104*adj_test_phos)
 
+
+
 def DRPexcel(adj_test_phos):
     '''Dissolved Reactive Phosphorus Based on #s in the excel model'''
     return 2*(.00705*adj_test_phos+.03)
     
+
+
+
     
 def dis_manureP(manure_applications, RDR_factor, **kwargs):
     '''Calculate sum of dissolved loss from Manure Applications.
@@ -270,6 +275,8 @@ def SDR(distance, buffer=True, clay=False):
     else:
         return 1
     
+    
+    
 def SDRm(manure_setback,buffer_width, buffer, **kwargs):
     '''SDR for a manure application.'''
     if 'SDR_factor' in kwargs.keys():
@@ -277,12 +284,17 @@ def SDRm(manure_setback,buffer_width, buffer, **kwargs):
     else:
         return SDR(buffer_width+manure_setback, buffer=buffer)
 
+
+
 def calcRDR(buffer_width, **kwargs):
     '''Calculate basic RDR.'''
     if 'RDR_factor' in kwargs.keys():
         return kwargs['RDR_factor']
     else:
         return SDR(buffer_width, buffer=False, clay=kwargs['soil_is_clay'])
+
+
+
 
 def SDRsed(sed_cntrl_structure_fact, buffer_width, distance_to_water, **kwargs):
     '''SDR for eroded soil. Page 6 of technical docs.
@@ -302,9 +314,6 @@ final SDR    '''
     
 
 
-
-
-     
 def al_factor_soilP(al_level):
     '''Adjustment for Aluminum level for P applications.
     Page 5 of Technical Docs:
@@ -452,7 +461,7 @@ class manureApplication(pApplication):
     Rate: Manure in lbs P2O5 per acre.
     Date: Date of fertilizer application. 
     Time_to incorp: int, in days. 
-    Type: str (not relevant right now)
+    Type: str (not relevant right now, the type of manure.)
     incorp_method: str.''' 
     def __init__(self, field, rate, date, time_to_incorp, incorp_method, Type):
         pApplication.__init__(self, field, incorp_method)

@@ -3,7 +3,13 @@
 Created on Thu Jun 18 10:29:05 2020
 
 @author: benja
+
+
+Script for generating probability distributions and conditional logic 
+for simulated variables from a csv file. 
 """
+
+
 import random
 from scipy import stats
 import csv
@@ -11,14 +17,19 @@ import string
 
 
 def cell_parser(s):
-    '''Process cells from a csv.'''
+    '''Process a cell from a csv.'''
+    
     if not s:
         return ''
+    
+    #if cell is a list, return as a list
     if ',' in s:
         return [n.strip() for n in s.split(',')]
+    
+    #if the cell is a number
     elif all([char in string.digits+'.' for char in s]):
-        
         return float(s)
+    
     else:
         return s
 
@@ -49,7 +60,7 @@ class Variable():
         self.name=name
         
     def draw(self, **kwargs):
-        
+        '''Draw a single random or conditional value.'''
         
         if self.type=='User_defined': #only user-defined variables can be passed arbitrary kwargs
             return self.dist_func.rvs(size=1, **kwargs)[0]

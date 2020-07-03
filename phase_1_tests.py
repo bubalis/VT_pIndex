@@ -8,6 +8,8 @@ Created on Wed May 13 16:59:36 2020
 
 Testing based on the spreadsheet model. 
 
+Loads in data from the spreadsheet, runs calculations and checks them against calculated values in spreadsheet.
+
 
 """
 
@@ -32,12 +34,14 @@ def parse_manure(n, dic):
     return parameters
 
 def manure_date(string):
+    '''Parser for manure application date.'''
     if string.lower()=='none applied':
         return None
     else:
         string=string.split('-')[0]
         
 def parse_manure_time(string):
+    '''Parser for time to manure incorporation.'''
     if string.lower()=='none applied':
         return 1
     elif string.lower()=='immediate':
@@ -157,17 +161,19 @@ def manure_from_dict(n, dic):
     return manureApplication(**d)    
 
 def load_example_data(data_col=5):
+    '''Load data from the sheet.'''
     wb = xlrd.open_workbook('Vermont-Phosporus-Index (1).xlsx') 
     sheet = wb.sheet_by_index(2)
 
-    values={}
+    dic={}
     for i,row in enumerate(sheet.get_rows()):
-        values[row[4].value]=row[data_col].value
+        dic[row[4].value]=row[data_col].value
         if i>192:
-            return values
+            return dic
 
 
 def check_correct(test_field, values):
+    '''Check that the results are correct within a tolerance level.'''
     results=[test_field.results[name] for name in [ 'total p loss',
      'surface particulate loss' ,
      'surface dissolved loss',

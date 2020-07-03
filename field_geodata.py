@@ -15,10 +15,13 @@ import os
 import rasterio
 from rasterstats import zonal_stats
 import numpy as np
+from pandas import Series
 import matplotlib.pyplot as plt
 from rasterio.plot import show as show_rast
 from shapely.geometry.point import Point 
 from rasterio.mask import mask
+import re
+
 
 def get_cropFields():
     '''Load Crop Fields geodatabase'''
@@ -37,9 +40,27 @@ def get_cropFields():
 #%%
 
 def load_soils(soils_path):
+    '''Load the soils gdb and create the null aoi gdb.'''
+    print('Making soils shapes and aoi.')
     soils=gpd.read_file(soils_path)
     soils['null']=0
     aoi=soils.dissolve(by='null')[['geometry', 'AREASYMBOL']]
+    
+    
+    #code here extracts likely rotations 
+    crop_rot_path=os.path.join('P_Index_LandCoverCrops', 'P_Index_LandCoverCrops', 'CropRotation_SoilType.dbf' )
+    rot_code_path=os.path.join('P_Index_LandCoverCrops', 'P_Index_LandCoverCrops', "CropRotationCodes_Domain.dbf")
+    
+    
+    codes=gpd.read_file(rot_code_path)[['Code', 'Descriptio']]
+    codes.rename(columns={'Code': 'Rotation'}, inplace=True)
+    crop_rots=gpd.read_file(crop_rot_path)[['MUSYM', 'Rotation']]
+    crop_rots=crop_rots.merge(codes, on='Rotation')
+    
+    soils=soils.merge(crop_rots, on='MUSYM')
+    soils.drop(columns=['Rotation'], inplace=True)
+    soils.rename(columns={'Descriptio': 'Rotation'}, inplace=True)
+    
     return soils, aoi
 
 def snip_to_aoi(gdf, aoi, buffer=0):
@@ -84,8 +105,7 @@ def dist_to_water(field, raster, stream_line):
                      "transform": transform, 
                      
                      })
-        
-        
+    
     with rasterio.open(path, "w", **out_meta) as dest: #write the raster
         dest.write(array)
     with rasterio.open(path) as raster:   #read raster back in
@@ -98,9 +118,9 @@ def dist_to_water(field, raster, stream_line):
         return dist, point
     
 def dist_to_water_simple(field, stream_line):
-    '''Shortest euclidean distance between field and any stream.'''
+    '''Shortest euclidean distance between field and any water-body.'''
     
-    distance= field['geometry'].distance(stream_line.iloc[0]['geometry'][0])
+    distance= field['geometry'].distance(stream_line.iloc[0]['geometry'])
     if distance<4:
         return 4, None
     else:
@@ -112,7 +132,7 @@ def dist_to_water_simple(field, stream_line):
         
 def all_dist_to_water(cfh2, streams, h2Osheds, usle_path):
     '''Find distance to water for all fields in the crop-fields gdf.'''
-    
+    print('Calculating Distance to Water for fields.')
     results =[]
     points=[]
     for HUC12_code in cfh2['HUC12'].unique():
@@ -136,7 +156,9 @@ def all_dist_to_water(cfh2, streams, h2Osheds, usle_path):
 
 
 def get_max_point(raster):
-    '''Return a geoseries of a single point that is the centroid of the maximum value of a raster.'''
+    '''Return a geoseries of a single point that is the centroid of the maximum value of a raster.
+    Used to calculate distance from outflow point to water. 
+    '''
     
     a=raster.read(1)
     y, x=np.where(a==a.max())
@@ -199,8 +221,11 @@ def set_globals():
     '''Setup globals for make these calculations.'''
     
     usle_path=os.path.join(os.getcwd(), 'intermediate_data', 'USLE')
-    soils_path=r"C:\Users\benja\VT_P_index\model\intermediate_data\Geologic_SO01_poly.shp"
-    soils, aoi=load_soils(soils_path)
+    soils_path=os.path.join("intermediate_data", "Geologic_SO01_poly.shp")
+    
+    soils, aoi=load_soils(soils_path)                        
+    
+    
     
     crop_fields=get_cropFields()
     
@@ -220,9 +245,13 @@ def set_globals():
 
 
 def crop_fields_watersheds(cf, h2Osheds, streams):
-    '''Create a geodatafraame whcih calculates all statistics for fields 
-    which utilize watershed-level rasters.'''
-
+    '''Create a geodatafraame which calculates all statistics for fields 
+    which utilize watershed-level rasters.
+    distance to water and potential erosion (RKLS) 
+    are calculated on watershed level (for memory useage.)
+    They have to be calculated and recombined for fields which straddle watersheds.
+    '''
+    'Making calulations on Watershed Level'
     #prep the crop fields by watersheds gdf
     cfh2=gpd.overlay(h2Osheds, cf, how='intersection')
     cfh2['Area']=cf['geometry'].area
@@ -244,9 +273,34 @@ def crop_fields_watersheds(cf, h2Osheds, streams):
     cfh2['outflow_points']=outflow_points
     
     return  cfh2
+#%%
 
-
-
+def parse_crop_rots(string):
+    '''Parser for crop rotations.
+    May need work. '''
+    n_corn, n_hay, n_other, n_fallow=0,0,0,0
+    if '/' in string:
+        try:
+            n_corn, n_hay=tuple([int(re.search('\d', part).group()) for part in string.split('/')])
+        except:
+            print(string.split('/'))
+    elif 'Continuous' in string:
+        if 'Corn' in string:
+            n_corn=10 
+        elif "Hay" in string:
+            n_hay=10
+    elif string=='Not Suited To Crops':
+        n_fallow=10
+    elif string=='HC':
+        n_hay=10
+    
+    else:
+        print(string)
+        raise ValueError
+        
+    return Series([n_corn, n_hay, n_other, n_fallow])
+        
+   #%%     
     
 
 
@@ -255,12 +309,13 @@ def set_calculated_values(cf, cfh2):
     
     '''
     
-    
-    
-    
+    print('Assigning values to geo-dataframe')
+
     soils_overlay=gpd.overlay(soils, cf, how='intersection')
     soils_overlay['area']=soils_overlay['geometry'].area
     soils_overlay['hydro_group']=soils_overlay['HYDROGROUP'].apply(lambda x: x.split('/')[-1])
+    
+    
     cfh2['area']=cfh2['geometry'].area
     
     #set variables as empty lists
@@ -270,10 +325,10 @@ def set_calculated_values(cf, cfh2):
     elev_values=[]
     HUC12s=[]
     dist_to_water_values=[]
+    crop_rotation_values=[]
     
     
     for idnum in cf['IDNUM'].tolist():
-        
         #extract values from the watershed-based gdf 
         subset_watershed=cfh2[cfh2['IDNUM']==idnum]
         rkls_values.append(weighted_avg(subset_watershed, 'RKLS', 'area'))
@@ -282,17 +337,11 @@ def set_calculated_values(cf, cfh2):
         elev_values.append(weighted_majority(subset_watershed, 'elevation', 'area'))
         
         
-        #soils overlay subset:
+        #soils overlay subset extractions:
         subset_soils=soils_overlay[soils_overlay['IDNUM']==idnum]
-        try:
-            clay_values.append(weighted_boolean_avg(subset_soils,  'is_clay', 'area'))
-        except KeyError:
-            print(subset)
-            print(idnum)
-            assert False
-        
+        clay_values.append(weighted_boolean_avg(subset_soils,  'is_clay', 'area'))
         hydrogroup_values.append(weighted_majority(subset_soils, 'HYDROGROUP', 'area'))
-        
+        crop_rotation_values.append(weighted_majority(subset_soils, 'Rotation', 'area'))
         
         
     crop_codes_dict={2111: 'Corn', 2121: 'Hay', 2118: 'Small_Grain', 2124: 'Fallow'}    
@@ -306,8 +355,11 @@ def set_calculated_values(cf, cfh2):
     cf['HUC12']=[str(tuple(H)) for H in HUC12s]
     cf['distance_to_water']=np.array(dist_to_water_values)*3.28 #meters to feet
     cf['crop_type']=cf['CROP_COVER'].apply(lambda x: crop_codes_dict[x])
+    cf['Rotation']=crop_rotation_values
     
-    
+    rotation_df=cf['Rotation'].apply(parse_crop_rots)
+    rotation_df.columns=['Years_Corn', "Years_Hay", 'Years_Other', "Years_Fallow"]
+    cf=cf.merge(rotation_df, left_index=True, right_index=True)
     #assign the county, this will need a county dict later.
     cf['county']='Addison'
     
@@ -334,12 +386,11 @@ def make_streams(h2Osheds, aoi):
     
     
     stream_path=os.path.join(os.getcwd(), 'source_data', 'NHD_H_Vermont_State_Shape', "Shape", 'NHDFlowline.shp')
-    
     streams=gpd.read_file(stream_path)
-    
     streams.to_crs(aoi.crs, inplace=True)
     streams=gpd.sjoin(streams, aoi)
-        
+    
+    
     #rivers:    
     river_path=os.path.join(os.getcwd(), 'source_data', 'NHD_H_Vermont_State_Shape', "Shape", 'NHDArea.shp')
     #ponds, lakes:
@@ -347,6 +398,7 @@ def make_streams(h2Osheds, aoi):
     #areas?
     area_path=os.path.join(os.getcwd(), 'source_data', 'NHD_H_Vermont_State_Shape', "Shape", 'NHDArea.shp')    
     
+    #add in all water elements
     for path in [river_path, bodies_path, area_path]:
         new_gdf=gpd.read_file(path)
         new_gdf=snip_to_aoi(new_gdf, aoi)
@@ -362,8 +414,18 @@ def make_streams(h2Osheds, aoi):
     
     return streams
 #%%
+#%%   
 
-
+if __name__=='__main__':
+    cf, soils, aoi, h2Osheds, usle_path  = set_globals()
+    streams=make_streams(h2Osheds, aoi)    
+    cfh2=crop_fields_watersheds(cf, h2Osheds, streams)
+    #gpd.GeoDataFrame(geometry=[p[0] for p in cfh2['outflow_points'].tolist()], crs=cf.crs).to_file(os.path.join('intermediate_data', 'outflow_points'))
+    cf=set_calculated_values(cf, cfh2)
+    cf['distance_to_water'].hist()
+    plt.show()
+    
+#%%
 '''Code for exploring USLE results with rasters in Google Earth.'''
 '''
 
@@ -416,13 +478,4 @@ for i, row in highest.iterrows():
 ax=mh.plot()
 m.plot(color='r', ax=ax)
 '''
-#%%   
 
-if __name__=='__main__':
-    cf, soils, aoi, h2Osheds, usle_path  = set_globals()
-    streams=make_streams(h2Osheds, aoi)    
-    cfh2=crop_fields_watersheds(cf, h2Osheds, streams)
-    #gpd.GeoDataFrame(geometry=[p[0] for p in cfh2['outflow_points'].tolist()], crs=cf.crs).to_file(os.path.join('intermediate_data', 'outflow_points'))
-    cf=set_calculated_values(cf, cfh2)
-    
-    
