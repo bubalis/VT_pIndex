@@ -60,11 +60,11 @@ runoff_adj_dict={'Corn & other row crops': [0.42, 0.25, 1.00, 0.75, 1.96, 1.48, 
 'Vegetable crop - mulched, living row cover': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82],
 'Vegetable crop - vining or high-canopy': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82] ,
 'Small grains': [0.22, 0.15, 0.67, 0.55, 1.48, 1.23, 2.17, 1.82],
- 'Alfalfa & other hay crops': [0, 0.12, 0, 0.55, 0, 1.37, 0, 1.98], 
-'Pasture': [0, 0.02, 0, 0.30, 0, 1.08, 0, 1.82,] ,
-'CRP, other ungrazed, perm. veg.': [0, 0.01, 0, 0.12, 0, 0.50, 0, 1.00], 
-'Woodland': [0, 0.01, 0, 0.15, 0, 0.62, 0, 1.10],
-'Hay': [0, 0.12, 0, 0.55, 0, 1.37, 0, 1.98]}
+ 'Alfalfa & other hay crops': [0.12, 0.12, 0.55, 0.55, 1.37, 1.37, 1.98, 1.98], 
+'Pasture': [.02, 0.02, .30, 0.30, 1.08, 1.08, 1.82, 1.82,] ,
+'CRP, other ungrazed, perm. veg.': [.01, 0.01, 0.12, 0.12, 0.5, 0.50, 1.00, 1.00], 
+'Woodland': [.01, 0.01, 0.15, 0.15, 0.62, 0.62, 1.10, 1.10],
+'Hay': [0.12, 0.12, .55, 0.55, 1.37, 1.37, 1.98, 1.98]}
 
 def runoff_parser(crop_name, cover_crop):
     if crop_name in runoff_adj_dict:
@@ -120,7 +120,7 @@ def lookup_RAF(hydro_group, veg_type, cover_perc, tile_drain):
         out=0
     if out==0:
         print(cover_perc)
-        raise ValueError
+        print('RAF assigned to Zero.')
     return out
 
 soil_hydro_factors={'A': 0.5,

@@ -38,6 +38,13 @@ def get_cropFields():
     
 
 #%%
+def load_crop_rotation_codes(crop_rot_path, rot_code_path):
+    '''Load crop rotation code data.'''
+    codes=gpd.read_file(rot_code_path)[['Code', 'Descriptio']]
+    codes.rename(columns={'Code': 'Rotation'}, inplace=True)
+    crop_rots=gpd.read_file(crop_rot_path)[['MUSYM', 'Rotation']]
+    crop_rots=crop_rots.merge(codes, on='Rotation')
+    return crop_rots
 
 def load_soils(soils_path):
     '''Load the soils gdb and create the null aoi gdb.'''
@@ -47,15 +54,10 @@ def load_soils(soils_path):
     aoi=soils.dissolve(by='null')[['geometry', 'AREASYMBOL']]
     
     
-    #code here extracts likely rotations 
+    # extract likely rotation data
     crop_rot_path=os.path.join('P_Index_LandCoverCrops', 'P_Index_LandCoverCrops', 'CropRotation_SoilType.dbf' )
     rot_code_path=os.path.join('P_Index_LandCoverCrops', 'P_Index_LandCoverCrops', "CropRotationCodes_Domain.dbf")
-    
-    
-    codes=gpd.read_file(rot_code_path)[['Code', 'Descriptio']]
-    codes.rename(columns={'Code': 'Rotation'}, inplace=True)
-    crop_rots=gpd.read_file(crop_rot_path)[['MUSYM', 'Rotation']]
-    crop_rots=crop_rots.merge(codes, on='Rotation')
+    crop_rots=load_crop_rotation_codes(crop_rot_path, rot_code_path)
     
     soils=soils.merge(crop_rots, on='MUSYM')
     soils.drop(columns=['Rotation'], inplace=True)
@@ -136,8 +138,8 @@ def all_dist_to_water(cfh2, streams, h2Osheds, usle_path):
     results =[]
     points=[]
     for HUC12_code in cfh2['HUC12'].unique():
-        raster_path=os.path.join(usle_path, HUC12_code, 'flow_acc.img')
-        raster=rasterio.open(raster_path)
+        #raster_path=os.path.join(usle_path, HUC12_code, 'flow_acc.img')
+        #raster=rasterio.open(raster_path)
         
         #streams into a single geometric object for that watershed. 
         stream_line=streams[streams['HUC12']==HUC12_code].dissolve('HUC12')
@@ -166,14 +168,14 @@ def get_max_point(raster):
     
     
 
-def retrieve_rastervals(name, cf, usle_path, stat='mean'):
+def retrieve_rastervals(raster_file_name, cf, usle_path, stat='mean'):
     '''Get zonal statistics for all shapes in a gdf. 
-    Name: the name of the raster file. '''
+    '''
     
     results=[]
     bad_HUC12s=[]
     for HUC12_code in cf['HUC12'].unique():
-        raster_path=os.path.join(usle_path, HUC12_code, name)
+        raster_path=os.path.join(usle_path, HUC12_code, raster_file_name)
         if not os.path.exists(raster_path):
             bad_HUC12s.append(HUC12_code)
             print(raster_path)
@@ -185,6 +187,8 @@ def retrieve_rastervals(name, cf, usle_path, stat='mean'):
         stats=zonal_stats(cf[cf['HUC12']==HUC12_code], array, affine=affine, stats=[stat])
         results+=stats
         r.close()
+    print ('Bad HUC12 codes')
+    print(bad_HUC12s)
     return [r[stat] for r in results]
 
 
@@ -198,7 +202,7 @@ def weighted_avg(df, avgcol, weight_col):
     df['weighted_totals']=df[avgcol]*df[weight_col]
     return df['weighted_totals'].sum()/df[weight_col].sum()
 
-def weighted_majority(df, cat_col, weight_col):
+def weighted_mode(df, cat_col, weight_col):
     '''Return the category which is most prevalent in a series of a datatframe based on weights.
     df: a dataframe
     cat_col: the column with categories.
@@ -214,18 +218,19 @@ def weighted_boolean_avg(df, avgcol, weight_col):
     df: a dataframe.
     avgcol: a column of boolean values.
     weight_col: the column with weight values. '''
+    
     return round(weighted_avg(df, avgcol, weight_col))
 
+def all_unique_values(df, valcol, *args):
+    return df[valcol].unique()
 
 def set_globals():
-    '''Setup globals for make these calculations.'''
+    '''Setup globals for make geodata calculations.'''
     
     usle_path=os.path.join(os.getcwd(), 'intermediate_data', 'USLE')
     soils_path=os.path.join("intermediate_data", "Geologic_SO01_poly.shp")
     
     soils, aoi=load_soils(soils_path)                        
-    
-    
     
     crop_fields=get_cropFields()
     
@@ -251,7 +256,7 @@ def crop_fields_watersheds(cf, h2Osheds, streams):
     are calculated on watershed level (for memory useage.)
     They have to be calculated and recombined for fields which straddle watersheds.
     '''
-    'Making calulations on Watershed Level'
+    print('Making calulations on Watershed Level')
     #prep the crop fields by watersheds gdf
     cfh2=gpd.overlay(h2Osheds, cf, how='intersection')
     cfh2['Area']=cf['geometry'].area
@@ -303,6 +308,21 @@ def parse_crop_rots(string):
    #%%     
     
 
+class Column_Summary_by_Area():
+    '''Object to aggregate values from a column. 
+    Used for aggregating subsets while weighting by area and putting columns back together.'''
+    
+    def __init__(self, column_name, summary_function):
+        self.column_name=column_name
+        self.summary_function=summary_function
+        self.results=[]
+        
+    def calculate(self, df):
+        '''Run the function on a df, weighted by area.'''
+        return self.summary_function(df, self.column_name, 'area')
+
+    def calc_and_append(self, df):
+        self.results.append(self.calculate(df))
 
 def set_calculated_values(cf, cfh2):
     '''Extract values from overlays, and re-assign based on the appropriate measure of central tendency. 
@@ -315,51 +335,58 @@ def set_calculated_values(cf, cfh2):
     soils_overlay['area']=soils_overlay['geometry'].area
     soils_overlay['hydro_group']=soils_overlay['HYDROGROUP'].apply(lambda x: x.split('/')[-1])
     
-    
     cfh2['area']=cfh2['geometry'].area
+
+    H2O_col_aggregators=[Column_Summary_by_Area(col_name, func_name) 
+                         for col_name, func_name in 
+                         [('RKLS', weighted_avg),
+                          ('HUC12', all_unique_values),
+                          ('distance_to_water', weighted_avg),
+                          ('elevation', weighted_avg)]
+                         ]
+
+    soil_col_aggregators=[Column_Summary_by_Area(col_name, func_name) 
+                          for col_name, func_name in 
+                          [('is_clay', weighted_boolean_avg),
+                           ('HYDROGROUP', weighted_mode),
+                           ('Rotation', weighted_mode)]
+                          ]
     
-    #set variables as empty lists
-    rkls_values=[]
-    clay_values=[]
-    hydrogroup_values=[]
-    elev_values=[]
-    HUC12s=[]
-    dist_to_water_values=[]
-    crop_rotation_values=[]
-    
+    calc_values={aggregator.column_name: [] for aggregator in 
+                 H2O_col_aggregators+soil_col_aggregators}
     
     for idnum in cf['IDNUM'].tolist():
         #extract values from the watershed-based gdf 
         subset_watershed=cfh2[cfh2['IDNUM']==idnum]
-        rkls_values.append(weighted_avg(subset_watershed, 'RKLS', 'area'))
-        HUC12s.append(subset_watershed['HUC12'].unique())
-        dist_to_water_values.append(weighted_avg(subset_watershed, 'distance_to_water', 'area'))
-        elev_values.append(weighted_majority(subset_watershed, 'elevation', 'area'))
-        
+        for agg in H2O_col_aggregators:
+            agg.calc_and_append(subset_watershed)
         
         #soils overlay subset extractions:
         subset_soils=soils_overlay[soils_overlay['IDNUM']==idnum]
-        clay_values.append(weighted_boolean_avg(subset_soils,  'is_clay', 'area'))
-        hydrogroup_values.append(weighted_majority(subset_soils, 'HYDROGROUP', 'area'))
-        crop_rotation_values.append(weighted_majority(subset_soils, 'Rotation', 'area'))
+        for agg in soil_col_aggregators:
+            agg.calc_and_append(subset_watershed)
         
-        
-    crop_codes_dict={2111: 'Corn', 2121: 'Hay', 2118: 'Small_Grain', 2124: 'Fallow'}    
         
     #assign values to original cropfields  gdf
-    cf=cf[['IDNUM', 'CROP_COVER', 'geometry', ]]    
-    cf['RKLS']=rkls_values
-    cf['soil_is_clay']=clay_values
-    cf['hydro_group']=hydrogroup_values
-    cf['elevation']=np.array(elev_values)*3.28 #meters to feet
-    cf['HUC12']=[str(tuple(H)) for H in HUC12s]
-    cf['distance_to_water']=np.array(dist_to_water_values)*3.28 #meters to feet
+    cf=cf[['IDNUM', 'CROP_COVER', 'geometry', ]]
+    for agg in H2O_col_aggregators+ soil_col_aggregators:
+        cf[agg.column_name]=agg.results
+    
+    
+    #clean and reassign variables
+    cf.rename(columns={'is_clay': 'soil_is_clay', 'HYDROGROUP':'hydro_group'}, inplace=True)
+    for dist_col in ['elevation', 'distance_to_water']:
+        cf[dist_col]=cf[dist_col]*3.28 #meters to feet
+    
+    crop_codes_dict={2111: 'Corn', 2121: 'Hay', 2118: 'Small_Grain', 2124: 'Fallow'}    
     cf['crop_type']=cf['CROP_COVER'].apply(lambda x: crop_codes_dict[x])
-    cf['Rotation']=crop_rotation_values
+    cf['HUC12']=cf['HUC12'].apply(lambda x: str(tuple(x)))
     
     rotation_df=cf['Rotation'].apply(parse_crop_rots)
     rotation_df.columns=['Years_Corn', "Years_Hay", 'Years_Other', "Years_Fallow"]
     cf=cf.merge(rotation_df, left_index=True, right_index=True)
+    
+    
     #assign the county, this will need a county dict later.
     cf['county']='Addison'
     
@@ -376,7 +403,7 @@ def set_calculated_values(cf, cfh2):
     return cf
 
 
-#to do vegetated buffer width 
+#to do: vegetated buffer width 
 #%%
 
 
@@ -413,7 +440,7 @@ def make_streams(h2Osheds, aoi):
     streams.to_file(save_path)
     
     return streams
-#%%
+
 #%%   
 
 if __name__=='__main__':
@@ -426,56 +453,4 @@ if __name__=='__main__':
     plt.show()
     
 #%%
-'''Code for exploring USLE results with rasters in Google Earth.'''
-'''
-
-import fiona
-
-
-highest=cf.sort_values('RKLS').dropna(subset=['RKLS']).tail(10)
-
-fiona.supported_drivers['KML'] = 'rw'
-highest['geometry'].to_file('maxima.kml', driver='KML')
-
-highest['buf']=highest.buffer(100)
-i2=0
-for i, row in highest.iterrows():
-    print(i)
-    code=row['TNMID']
-    if not os.path.exists(str(i)):
-        os.makedirs(str(i))
-    shape=[row['buf']]
-    for data in ['K_Factors.tif', 'LS.tif', "RKLS.tif", 'flow_acc.img', 'pit_filled_dem.img', 'slope_raster.img' ]:
-        name=data.split('.')[0]    
-        path=os.path.join(usle_path, row['HUC12'], data)    
-        with rasterio.open(path) as s:
-            out_image, out_transform = mask(s, shape, crop=True)
-            out_meta = s.meta
-            
-            out_meta.update({"driver": "GTiff",
-                             "height": out_image.shape[1],
-                             "width": out_image.shape[2],
-                             "transform": out_transform, 
-                             
-                             })
-        out_path=os.path.join(os.getcwd(), str(i), f"masked_{name}_{i}.img")
-        
-        with rasterio.open(out_path, "w", **out_meta) as dest:
-            dest.write(out_image)
-        
-        
-        with rasterio.open(out_path, 'r') as r1:
-            
-            show_rast(r1, alpha=.7, 
-                      contour=False,
-                      title=f'{name}_{i}'
-                      )
-            plt.plot(row['geometry'], color='k', alpha=.5, ax=ax, )
-            plt.show()
-    i+=1
-    
-    
-ax=mh.plot()
-m.plot(color='r', ax=ax)
-'''
 

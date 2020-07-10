@@ -3,47 +3,37 @@
 Created on Thu Jul  2 08:02:04 2020
 
 @author: benja
+
+Functions for simulating and retrieving values for the RUSLE crop-cover ('C') factor.
+
 """
 import random 
 import csv
 import math
 
 
-class Crop(object):
-    pass
-
-class Corn(Crop):
-    def __init__(self):
-        pass
-
-class Hay(Crop):
-    def __init__(self):
-        pass
-
-
-class Fallow(Crop):
-    def __init__(self):
-        pass
-
-
-class SmallGrain(Crop):
-    def __init__(self):
-        pass
 
 
 class cropSeq(object):
+    '''Class for a crop sequences to calculate C_factor'''
+    
     def __init__(self, crops, tillage_dict):
         self.crops=[crop for crop in crops if crop]
         self.tillage_dict=tillage_dict
     
-    def check(self, field):
-        if len(field.params['crop_seq'])>=len(self.crops):
-            if all([x==y for x,y in zip(field.params['crop_seq'], self.crops)]):
-                return self.tillage_dict
-        return False
+    def check_match(self, field):
+        '''Check if field's crop sequence matches crop sequence.
+        '''
+        return (len(field.params['crop_seq'])>=len(self.crops) and 
+        [all([x==y for x,y in zip(field.params['crop_seq'], self.crops)])])
+            
+    def respond(self, field):
+        '''If field and sequence match, return the tillage dict.'''
+        if self.check_match(field):
+            return self.tillage_dict
     
     def __repr__(self):
-        return 'Crop sequence:  ' +','.join(self.crops)
+        return 'Crop sequence:  ' +'\n'.join(self.crops)
     
 #%%
 def tryfloat(string):
@@ -76,15 +66,10 @@ def load_sequences(path=r"C:\Users\benja\VT_P_index\model\Source_data\C_factors.
 
 
 crop_seqs=load_sequences()
-#%%
-
-
-
-
 #%%    
     
 def search_crop_seq(crops):
-    '''Return the C factor dict for a given crop sequence.'''
+    '''Return the C factor sub-dictionary for a given crop sequence.'''
     
     dic=crop_seqs
     
@@ -104,6 +89,8 @@ def get_cFactor(crops, tillage):
     
     
 class Rotation(object):
+    '''A crop rotation. Used for drawing a multi-year crop sequence.'''
+    
     def __init__(self, **crops):
         self.years=[]
         for key, value in crops.items():
@@ -111,7 +98,8 @@ class Rotation(object):
         self.years
     
     def set_year(self, crop_name):
-        
+        '''Choose a random start year for a crop sequence,
+        where the starting crop is == to crop_name.'''
         while True:
             i=random.randint(0, len(self.years)-1)
             if self.years[i]==crop_name:
@@ -119,6 +107,11 @@ class Rotation(object):
         
         
     def draw_crops(self, crop_name):
+        '''Return a list of crops for this field. 
+        The list represents previous crops in the sequence.
+        list[0]: current crop/
+        list[1]: last year's crop. 
+        etc...'''
         if crop_name in self.years:
             i=self.set_year(crop_name)
             return [self.years[(n+i) % len(self.years)] 

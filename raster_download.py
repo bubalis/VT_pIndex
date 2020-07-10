@@ -60,6 +60,7 @@ def reproj_raster(file_path, out_path, crs):
 
             
 def download_file(url, directory, start_url=''): 
+    '''Download a file and save it to the given directory.'''
     
     file_name=os.path.join(directory, url.split('/')[-1])
     if file_name in os.listdir(directory):

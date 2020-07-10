@@ -199,7 +199,7 @@ at a soil test P of 0 ppm, to a maximum of 0.4 at STP = 100 ppm
 def P_avail_excel(adj_test_phos):
     '''TP availability factor. This formula from the excel spreadsheet'''
     if adj_test_phos<100:
-        return .1+adj_test_phos/100*.1
+        return .1+adj_test_phos/1000
     else:
         return .2
 
@@ -450,9 +450,6 @@ The Aluminum and Fertilizer Factors are explained above.
     
 
     
-
-
-
 
         
     

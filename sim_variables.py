@@ -16,22 +16,35 @@ import csv
 import string 
 
 
-def cell_parser(s):
-    '''Process a cell from a csv.'''
+def str_to_bool(string):
+    if string.lower()=='true':
+        return True
+    elif string.lower()=='false':
+        return False
     
-    if not s:
-        return ''
+
+def cell_parser(s):
+    '''Process a cell from the tsv file.'''
+    s=s.strip()
+    if s in ['True', 'False']:
+        return str_to_bool(s)
     
     #if cell is a list, return as a list
-    if ',' in s:
-        return [n.strip() for n in s.split(',')]
+    elif ',' in s:
+        return [cell_parser(n) for n in s.split(',')]
     
     #if the cell is a number
+    elif not s:
+        return ''
     elif all([char in string.digits+'.' for char in s]):
         return float(s)
-    
+        
     else:
-        return s
+        return s.strip()
+    
+cell_parser('True, False')
+
+#%%   
 
 def load_vars_csv(path):
     '''Load in Variables from a csv file. 
@@ -93,13 +106,12 @@ class Variable_from_dict(Variable):
     
     def __init__(self, dic):
         self.name=dic['Name']
+        self.description=dic['Description']
         kwargs={}
         for i in range(1,6):
             kwargs[dic[f'param {str(i)} name']]=dic[f'param {str(i)} value']
         kwargs={k:v for k,v in kwargs.items() if k}
         dist=dic['Distribution']
-        
-        
         
         d=globals().get(dist)
         if  d: #  if the variable is defined in this script
@@ -117,15 +129,14 @@ class prob_dist():
     
     def rvs(self, size=1, **kwargs):
         if size==1:
-            try:
-                return [self.draw1(**kwargs)]
-            except:    
-                print(self)
-                raise ValueError
+            return [self.draw1(**kwargs)]
+            
         else:
             return [self.draw1(**kwargs) for i in range(size)]
 
-
+    def __repr__(self):
+        return f'Distribution object: {self.name}'
+    
     
 class categorical(prob_dist):
     '''Class for a random categorical Variable.
@@ -136,6 +147,32 @@ class categorical(prob_dist):
     def __init__(self, name, **kwargs):
         self.draw1=setup_categorical_variable(kwargs)
     
+def setup_categorical_variable(probabilities):
+    ''' 
+    Create a function to draw a categorical variable from. 
+    '''
+    sum_prob=sum(probabilities.values())
+    if sum_prob!=1:
+        print('Warning: Probabilites do not sum to 1. Calculating based on relative probabilities')
+    
+    i=0
+    out_vals=[]
+    
+    for cat, prob in probabilities.items():
+        i+=prob/sum_prob
+        out_vals.append((i, cat))
+        
+    def draw1(**kwargs):
+        '''Draw a random # 0-1.
+        Return the lowest category whose threshold is higher than the
+        category's threshold.'''
+        p=random.random()
+        for thresh, cat in out_vals:
+            if p<thresh:
+                return cat
+            
+        
+    return draw1
 
 
 class constant(prob_dist):
@@ -164,29 +201,7 @@ class based_on_function(prob_dist):
 
 
     
-def setup_categorical_variable(probabilities):
-    ''' 
-    Create a function to draw a categorical variable from. 
-    '''
-    sum_prob=sum(probabilities.values())
-    if sum_prob!=1:
-        print('Warning: Probabilites do not sum to 1. Calculating based on relative probabilities')
-    
-    i=0
-    out_vals=[]
-    
-    for cat, prob in probabilities.items():
-        i+=prob/sum_prob
-        out_vals.append((i, cat))
-        
-    def draw1(**kwargs):
-        p=random.random()
-        for thresh, cat in out_vals:
-            if p<thresh:
-                return cat
-            
-        
-    return draw1
+
 
 class conditional(prob_dist):
     '''A probability object that draws from one of several other probability objects,
@@ -205,18 +220,16 @@ class conditional(prob_dist):
         
     def draw1(self, **kwargs):
         category=kwargs[self.cond_variable]
-        try:
-            if category in self.sub_variables:
-                function=globals()['variables'][f'{self.name}__{category}']
-                return function.draw(**kwargs)
-            elif category in self.else_names:
-                return globals()['variables'][f'{self.name}__else'].draw(**kwargs)
-            else:
-                raise ValueError
-        except:
+        
+        if category in self.sub_variables:
+            function=globals()['variables'][f'{self.name}__{str(category)}']
+            return function.draw(**kwargs)
+        elif category in self.else_names:
+            return globals()['variables'][f'{self.name}__else'].draw(**kwargs)
+        else:
             print('ERROR:')
             print(self.else_names, self.sub_variables)
-            print(category)
+            print([category])
             raise ValueError
 
     

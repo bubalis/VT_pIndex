@@ -8,6 +8,7 @@ import os
 import sim_variables
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 from field import CropField, manureApplication, fertApplication
 from C_factors import Rotation, crop_seqs
 
@@ -41,32 +42,42 @@ f_date_conversion_dic={'summer' :'May-September',
 
  
 class CropFieldFromShp(CropField):
-    '''Initate class from a series from a shapefile.'''
+    '''Initate Crop Field from a single series of a shapefile.'''
     def __init__(self, series, ):
         if series['crop_type']=='Other Crop':
             series['crop_type']='Small_Grain'
         self.known_params=series.to_dict()
+        self.known_params['acres']=series['geometry'].area*0.000247105 #sq meters to acres
         self.idnum=self.known_params['IDNUM']
         self.set_rotation()
-    
+        self.known_params['soil_is_clay']=bool( self.known_params['soil_is_clay'])
+        
     def initialize_sim(self, variable_objs):
+        '''Set up all needed inputs to run the P Index on Field'''
         self.simulate_params(variable_objs)
         self.setup_data()
-        
         self.USLE()
         
     def set_rotation(self):
-       crop_params={param.split('_')[1]: self.known_params[param]  for param in 
+        '''Assign the crop rotation to the field.'''
+        
+        crop_params={param.split('_')[1]: self.known_params[param]  for param in 
                                   [p for p in self.known_params if 'Years_' in p]}
       
-       self.rotation=Rotation(**crop_params)
+        self.rotation=Rotation(**crop_params)
     
+    def sim_rotation(self):
+        crop_seq= self.rotation.draw_crops(self.known_params['crop_type'])
+        is_establishment_year=(crop_seq[0]!=crop_seq[1])
+        return crop_seq, is_establishment_year
     
     def simulate_params(self, variable_objs):
         '''Simulate Parameters for the field. 
         pass a dictionary of variable objects. '''
-        self.crop_sequence=[]
-        self.sim_params={}
+        crop_seq, is_establishment_year=self.sim_rotation()
+        
+        self.sim_params={'crop_seq': crop_seq,
+                         'is_establishment_year': is_establishment_year}
         
 
         #parameters simulated directly from variable objects
@@ -129,7 +140,7 @@ class CropFieldFromShp(CropField):
         
    
     def gen_Fert(self, variable_objs):
-         '''Generate Fertilizer Applications for this field with simulated data. '''
+         '''Generate Fertilizer Applications for this field, using simulated data. '''
          self.sim_params['fertilizer_applications']=[]
          for i in range(int(self.sim_params['num_fert_applications'])):
             fertilizer_params={'p_rate':5}
@@ -144,16 +155,19 @@ class CropFieldFromShp(CropField):
          self.params={**self.sim_params, **self.known_params}          
      
     def USLE(self):
-         #to do: set C and P params for USLE
-        self.params['crop_seq']=self.rotation.draw_crops(self.params['crop_type'])
+        '''Set the erosion rate for the field.'''
+        
+         #to do: set param for USLE
+        
         self.params['C']=self.getC_fac()
         self.params['P']=.8 #P will actually have to be simulated!
         self.params['erosion_rate']=np.product([self.params[n] for n in ['RKLS', "C", 'P']])
      
         
     def getC_fac(self):
+        '''Retreive the C factor from USLE.'''
         for seq in crop_seqs:
-            dic= seq.check(self)
+            dic= seq.respond(self)
             if dic:
                 break
         c= dic[self.params['tillage_timing']][self.params['tillage_method']]
@@ -203,10 +217,11 @@ class SimManure(manureApplication):
         
         '''
         if date=='spring':
-            if field.sim_params['veg_type'] in [ 'Alfalfa & other hay crops', 
+            if field.sim_params['cover_crop'] or field.sim_params['veg_type'] in [ 'Alfalfa & other hay crops', 
                                                  'CRP, other ungrazed, perm. veg.',
                                                  'Small grains']:
                 return 'April - vegetated'
+                
             else:
                 return 'April - bare'
         else:
@@ -227,6 +242,7 @@ class simulation():
         self.fields=[]
         
     def load_data(self):
+        '''Load in data from the shapefile in the simulation directory.'''
         gdf=self.load_shape()
         gdf=self.fix_data(gdf)  
         
@@ -238,12 +254,14 @@ class simulation():
         return self.fields, gdf
 
     def fix_data(self, gdf):
+        '''Make minor fixes to how data is represented. '''
         gdf['hydro_group']=gdf['hydro_group'].apply(lambda x: x.split('/')[-1])
         gdf['hydro_group']=gdf['hydro_group'].apply(fix_hydro_group)
         gdf['buffer_width']=gdf['distance_to_water']
         return gdf
     
     def load_shape(self):
+        '''Load in the shapefile for simulations.'''
         shape_file=[f for f in os.listdir(self.directory) if 'shp' in f][0]
         path=os.path.join(self.directory, shape_file)
         gdf=gpd.read_file(path)
@@ -255,6 +273,8 @@ class simulation():
 
 
     def simPindex(self, n_times=1):
+        '''Simulate P Index for all of the fields.'''
+        
         self.records=[]
         for n in range(n_times):
             for field in self.fields:
@@ -263,6 +283,8 @@ class simulation():
                 self.records.append({**{'Sim Number': n}, **field.params, **field.results})
                 
     def load_test(self):
+        '''Load a small subset for a test.'''
+        
         gdf=self.load_shape()
         gdf=self.fix_data(gdf)  
             
@@ -275,12 +297,16 @@ class simulation():
             self.fields.append(CropFieldFromShp(row))
         
         return self.fields, gdf
+    
 #%%
 if __name__=='__main__':
     sim=simulation(os.path.join(os.getcwd(), 'intermediate_data', 'SO01_fields'))
     variables_path=r"C:\Users\benja\VT_P_index\model\sim_variables.txt"
-    fields, gdf=sim.load_data()
-    sim.simPindex()
+    fields, gdf=sim.load_test()
+    sim.simPindex(1)
+    #df=pd.DataFrame(sim.records)
+    #df.drop(columns=['manure_applications', 'fertilizer_applications', 'crop_seq', 'geometry'], inplace=True)
+    #df.to_csv(r"C:\Users\benja\VT_P_index\model\results\scratch.csv")
 
 
 
