@@ -21,7 +21,7 @@ class CropField():
         self.results['subsurface_loss']=self.subsurface_loss()
                 
         
-        self.results['total p loss']=sum(self.results[pathway] for pathway in 
+        self.results['total p index']=sum(self.results[pathway] for pathway in 
                     ['surface particulate loss', 'surface dissolved loss', 'subsurface_loss'])
         return self.results
         

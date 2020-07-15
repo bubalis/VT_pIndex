@@ -34,8 +34,21 @@ def get_cropFields():
     return gdf
 
 
+def save_shape_w_cols(gdf, dir_path):
+    gdf.to_file(dir_path)
+    with open(os.path.join(dir_path, 'column_names.txt'), 'w') as file:
+        for col_name in gdf.columns.to_list():
+            print(col_name, file=file)
 
+def load_shape_w_cols(dir_path):
+    shape_file=[f for f in os.listdir(dir_path) if 'shp' in f][0]
+    path=os.path.join(dir_path, shape_file)
+    gdf=gpd.read_file(path)
     
+    #rename columns to full length
+    with open(os.path.join(dir_path, 'column_names.txt')) as f:
+        gdf.columns=[line for line in f.read().split('\n') if line]
+    return gdf
 
 #%%
 def load_crop_rotation_codes(crop_rot_path, rot_code_path):
@@ -391,15 +404,13 @@ def set_calculated_values(cf, cfh2):
     cf['county']='Addison'
     
     
-    save_path=os.path.join(os.getcwd(), 'intermediate_data', 'SO01_fields')
+    
     cf=cf[[c for c in cf.columns if c!='geometry']+['geometry']] #reorder field names
     
-    cf.to_file(save_path)
     
-    #save column names to textfile to deal with shapefiel limitations. 
-    with open(os.path.join('intermediate_data', 'SO01_fields', 'column_names.txt'), 'w') as file:
-        for col_name in cf.columns.to_list():
-            print(col_name, file=file)
+    save_path=os.path.join(os.getcwd(), 'intermediate_data', 'SO01_fields')
+    save_shape_w_cols(cf, save_path)
+    
     return cf
 
 

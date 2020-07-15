@@ -9,11 +9,14 @@ from SALib.sample import saltelli
 import pandas as pd
 
 
-class CategoricalSampler():
+class CategoricalSampler(object):
+    '''Class to turn Numerical Values drawn for sensitivity analysis into categorical variables.'''
     def __init__(self, *param_values):
         self.param_values=param_values
     
     def draw(self, i):
+        '''Convert value i into a category for this variable.
+        Return that category'''
         i=round(i)
         return self.param_values[i]
     

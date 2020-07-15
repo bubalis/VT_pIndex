@@ -174,7 +174,7 @@ def load_example_data(data_col=5):
 
 def check_correct(test_field, values):
     '''Check that the results are correct within a tolerance level.'''
-    results=[test_field.results[name] for name in ['total p loss',
+    results=[test_field.results[name] for name in ['total p index',
      'surface particulate loss' ,
      'surface dissolved loss',
      'subsurface_loss']]
