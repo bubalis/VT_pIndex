@@ -177,7 +177,7 @@ def check_correct(test_field, values):
     results=[test_field.results[name] for name in ['total p index',
      'surface particulate loss' ,
      'surface dissolved loss',
-     'subsurface_loss']]
+     'subsurface loss']]
     
     test_values=[values[name] for name in [ 'P Index:',
                     'Pathway I:  Sediment-bound P',

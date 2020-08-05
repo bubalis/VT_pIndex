@@ -18,11 +18,16 @@ class CropField():
         '''Calculate the p Index for this field.'''
         self.results['surface particulate loss']= self.surf_particulate_loss()
         self.results['surface dissolved loss']= self.surf_dissolved_loss()
-        self.results['subsurface_loss']=self.subsurface_loss()
-                
+        self.results['subsurface loss']=self.subsurface_loss()
+        self.results['non_adjusted_surf_partic_loss']=self.surface_partic_loss_non_adj()         
         
         self.results['total p index']=sum(self.results[pathway] for pathway in 
-                    ['surface particulate loss', 'surface dissolved loss', 'subsurface_loss'])
+                    ['surface particulate loss', 'surface dissolved loss', 'subsurface loss'])
+        
+        self.results['total p lost (kg/ha)']=(self.results['total p index']-
+                                              self.results['surface particulate loss']+
+                                              self.results['non_adjusted_surf_partic_loss'])/80*2.47/2.2
+        
         return self.results
         
     
@@ -51,7 +56,7 @@ class CropField():
   
                
     
-    def sum_fractions(self, functions_to_sum, default_args={}):
+    def sum_fractions(self, functions_to_sum, default_args={}, update=True):
         '''Return the sum of multiple functions, with all of the field's parameters passed to that function.
         Default args can be used to overide parameters of the field object.'''
         
@@ -60,13 +65,17 @@ class CropField():
         
         for function in functions_to_sum:
             result=function(**kwargs)
-            self.results[function.__name__]=result
+            if update:
+                self.results[function.__name__]=result
             s+=result
         return s
     
     def surf_particulate_loss(self, scaling_factor=80):
         '''Surface Particulate P loss.'''
         return self.sum_fractions([erodedSoilP, manure_partic_P]) *scaling_factor
+   
+    def surface_partic_loss_non_adj(self, scaling_factor=80):
+        return self.sum_fractions([total_eroded_soilP, manure_partic_P]) *scaling_factor
    
     
     def surf_dissolved_loss(self, scaling_factor=80):
@@ -90,7 +99,7 @@ class CropField():
                                        dis_soilP,
                                        dis_manureP, 
                                        fertilizerP], 
-                                        default_args)*PF6*scaling_factor
+                                        default_args, update=False)*PF6*scaling_factor
         else:
             return 0
         
@@ -176,12 +185,17 @@ available) at a soil test P of 0 ppm, to a maximum of 0.4 at STP = 100 ppm (base
 chemical extraction of Lake Champlain sediments that approximates algal uptake).
 d. SDR = Sediment Delivery Ratio (see Sediment and Runoff Delivery Ratios, above). '''
     
+    return np.product([total_eroded_soilP(erosion_rate, adj_total_phos, **kwargs),
+                       P_avail_excel(adj_test_phos),
+                       ])
+
+
+def total_eroded_soilP(erosion_rate, adj_total_phos, **kwargs):
+    '''Total P lost, before adjustment for availability to algae. ''' 
     return np.product([erosion_rate,
                        .002,    #conversion factor to million lbs per acre
                        adj_total_phos,
-                       P_avail_excel(adj_test_phos),
                        SDRsed(**kwargs)])
-
 
 
 def P_avail(adj_test_phos):
@@ -202,6 +216,7 @@ def P_avail_excel(adj_test_phos):
         return .1+adj_test_phos/1000
     else:
         return .2
+
 
 
 def manure_partic_P(manure_applications, **kwargs):

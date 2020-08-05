@@ -68,9 +68,7 @@ def load_vars_csv(path):
         for row in rows[1:]:
             dic={key:cell_parser(value) for key, value in zip(keys, row)}
             if dic['Name']:
-                variables[dic['Name']]=Variable_from_dict(dic)
-        for var in variables.values():
-            var.connect_to_all(variables)
+                variables[dic['Name']]=Variable_from_dict(dic, variables)
         return variables
 
 
@@ -85,16 +83,8 @@ class Variable():
         
     def draw(self, **kwargs):
         '''Draw a single random or conditional value.'''
-        
-        if self.type=='User_defined': #only user-defined variables can be passed arbitrary kwargs
-            try:    
-                return self.dist_func.rvs(size=1, **kwargs)[0]
-            except TypeError:
-                print(self)
-                raise TypeError
-        
-        else:
-            return self.dist_func.rvs(size=1)[0]
+        return self.dist_func.rvs(size=1, **kwargs)[0]
+            
     
     def draw_no_replacement(self, size, **kwargs):
         '''Make multiple draws without replacement.'''
@@ -110,9 +100,6 @@ class Variable():
     def __repr__(self):
         return f'Variable Generator: {self.name} \n {self.dist_func}'
     
-    def connect_to_all(self, variables):
-        self.dist_func.all_variables=variables
-    
 class Variable_from_dict(Variable):
     '''Initialize a variable from a dictionary: 
     keys: Name - variable name.
@@ -121,9 +108,9 @@ class Variable_from_dict(Variable):
     param {i} value: value of parameter. 
     Up to i==5. '''
     
-    def __init__(self, dic):
+    def __init__(self, dic, variable_dic):
         
-        self.name=dic['Name']
+        self.var_name=dic['Name']
         self.description=dic['Description']
         kwargs={}
         for i in range(1,6):
@@ -131,25 +118,9 @@ class Variable_from_dict(Variable):
         kwargs={k:v for k,v in kwargs.items() if k}
         dist=dic['Distribution']
         
-        self.dist_func, self.type=create_dist(dist, self.name, **kwargs)
-        '''d=globals().get(dist)
-        if  d: #  if the variable is defined in this script
-            self.dist_func=d(**kwargs, name=self.name)
-            self.type='User_defined'
-            
-        elif '.' in dist: #if the variable is defined in an imported package
-            
-            module=globals().get(dist.split('.')[0])
-            d=getattr(module, dist.split('.')[1])
-            self.dist_func=d(**kwargs)
-            self.type='From_package'
-            
-        
-            
-        else:
-            raise ValueError(f'"{dist}" not defined in script or in imported package')'''
-        
+        self.dist_func=ProbDist(dist, self.var_name, variable_dic, **kwargs)
 
+        
 def create_dist(dist_name, var_name, **kwargs):
     '''Retrieve distribution from globals and initialize it. 
     Return a probability distribution obj and 
@@ -158,31 +129,56 @@ def create_dist(dist_name, var_name, **kwargs):
     d=globals().get(dist_name)
     if  d: #  if the variable is defined in this script
         return d(**kwargs, name=var_name), 'User_defined'
+    
     elif '.' in dist_name: #if the variable is defined in an imported package:
         module=globals().get(dist_name.split('.')[0])
         d=getattr(module, dist_name.split('.')[1])
         return d(**kwargs), 'From_package'   
      
     else:
-        raise ValueError(f'"{dist_name}" not defined in script or in imported package')
+        raise ValueError(f'"{dist_name}" not defined in this script or in any imported package')
     
-class prob_dist(): 
-    '''Metaclass for self-designed probability distributions.'''
+class ProbDist(): 
+    '''Metaclass for probability distributions.'''
+    def __init__(self, dist_name, var_name, variable_dic, **kwargs):
+        self.var_name=var_name
+        self.dist_name=dist_name
+        self.all_variables=variable_dic
+        d=globals().get(dist_name)
+        if  d: #  if the variable is defined in this script
+           d.__init__(self, **kwargs, name=var_name)
+             
+        elif '.' in dist_name: #if the variable is defined in an imported package:
+            try:
+                ProbDistFromMod.__init__(self, dist_name=dist_name, var_name=var_name, **kwargs, )
+            except TypeError:
+                raise TypeError(f'{var_name} received inappropriate Keyword argument for {dist_name}')
+        else:
+           raise ValueError(f'"{dist_name}" not defined in this script or in any imported package')
+    
+    def __repr__(self):
+        return f'{self.var_name}, {self.dist_name}'
     
     def rvs(self, size=1, **kwargs):
-        
-        if size==1:
-            return [self.draw1(**kwargs)]
-                
-        else:
+        try:
             return [self.draw1(**kwargs) for i in range(size)]
-        
+        except:
+            print(self)
+            raise AssertionError
 
-    #def __repr__(self):
-     #   return f'Distribution object: {self.name}'
+class ProbDistFromMod(ProbDist):
+    def __init__(self, dist_name, var_name, **kwargs):
+        module=globals().get(dist_name.split('.')[0])
+        d=getattr(module, dist_name.split('.')[1])
+        self.frozen_dist=d(**kwargs)
+        def draw1(**kwargs):
+            return self.frozen_dist.rvs()
+        self.draw1=draw1
+        
+        
     
     
-class categorical(prob_dist):
+class categorical(ProbDist):
     '''Class for a random categorical Variable.
     Pass a probability dictionary:
     keys: categories, 
@@ -197,9 +193,8 @@ def setup_categorical_variable(probabilities):
     '''
     sum_prob=round(sum(probabilities.values()), 8)
     if sum_prob !=1:
-        print(f'Warning: Probabilites sum to {sum_prob} not 1. Calculating based on relative probabilities')
-
-    
+        print(f'''Warning: Probabilites sum to {sum_prob} not 1. 
+              Calculating based on relative probabilities''')    
     i=0
     out_vals=[]
     
@@ -220,7 +215,7 @@ def setup_categorical_variable(probabilities):
     return draw1
 
 
-class constant(prob_dist):
+class constant(ProbDist):
     '''A variable set to a constant.'''
     def __init__(self, n, **kwargs):
         def draw1(**kwargs):
@@ -228,7 +223,7 @@ class constant(prob_dist):
         self.draw1=draw1
     
 
-class echo(prob_dist):
+class echo(ProbDist):
     '''Returns the value from a given key in the dictionary that is passed.'''
     
     def __init__(self, echo_field, **kwargs):
@@ -240,25 +235,19 @@ class echo(prob_dist):
             assert False
         self.draw1=draw1
     
-def kwarg_wrapper(func):
-    def wrapper(**kwargs):
-        return func()
 
 
-class dist_plus_function(prob_dist):
+class dist_plus_function(ProbDist):
     '''Create a variable simulated by a drawing from a distribution, then altering the result by some function.'''
     def __init__(self, dist_name, function, dist_kws, **kwargs):
         dist_kwargs={dist_kw: kwargs[dist_kw] for dist_kw in ensure_list(dist_kws)}
-        dist, dist_type=create_dist(dist_name, var_name=None, **dist_kwargs)
+        dist=ProbDist(dist_name, var_name="Temporary", variable_dic=None, **dist_kwargs)
         def draw1(**kwargs):
-            if dist_type=='User_defined':
-                return function(dist.rvs(**kwargs),  **kwargs)
-            elif dist_type=='From_package':
-                return function(dist.rvs(), **kwargs)
+            return function(dist.draw1(**kwargs), **kwargs)
         self.draw1=draw1
         
     
-class ceil_lognorm(prob_dist):
+class ceil_lognorm(ProbDist):
     '''Lognormal distribution rounded up to nearest integer.'''
     def __init__(self, **kwargs):
         def ceil(x, **kwargs):
@@ -269,7 +258,6 @@ class ceil_lognorm(prob_dist):
 
 class dist_w_bool(dist_plus_function):
     def __init__(self, distribution, dist_kws, bool_statement, else_response, **kwargs):
-        
         def function(x, **kwargs):
             for key, value in kwargs.items(): 
                 locals()[key]=value
@@ -281,7 +269,7 @@ class dist_w_bool(dist_plus_function):
         dist_plus_function.__init__(self, distribution, function, dist_kws, **kwargs)
         
 
-class conditional(prob_dist):
+class conditional(ProbDist):
     '''A probability object that draws from one of several other probability objects,
     depending on the parameters passed.
     name: a str
@@ -290,27 +278,23 @@ class conditional(prob_dist):
     else_name: names of variables that will return for else values. '''
     
     def __init__(self, name, cond_variable, sub_variables,  else_names=[], **kwargs):
-        self.name=name
         self.cond_variable=cond_variable
         self.sub_variables=sub_variables
         self.else_names=else_names
-        assert self.sub_variables, self.name
-        
-    def draw1(self, **kwargs):
-        category=kwargs[self.cond_variable]
-        if category in self.sub_variables:
-            function=self.all_variables[f'{self.name}__{str(category)}']
-            return function.draw(**kwargs)
-        
-        elif category in self.else_names:
-            return self.all_variables[f'{self.name}__else'].draw(**kwargs)
-        
-        
-        else:
-            raise ValueError(f'''{category} not in sub_variables or else_names: 
-                             {self.sub_variables} 
-                             {self.else_names}''' )
-
+        def draw1(**kwargs):
+            category=kwargs[self.cond_variable]
+            if category in self.sub_variables:
+                function=self.all_variables[f'{self.var_name}__{str(category)}']
+                return function.draw(**kwargs)
+            
+            elif category in self.else_names:
+                return self.all_variables[f'{self.var_name}__else'].draw(**kwargs)
+            
+            else:
+                raise ValueError(f'''{category} not in sub_variables or else_names: 
+                                 {self.sub_variables} 
+                                 {self.else_names}''' )
+        self.draw1=draw1
     
 if __name__=='__main__':
     variables=load_vars_csv('sim_variables.txt')

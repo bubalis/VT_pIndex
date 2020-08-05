@@ -21,15 +21,15 @@ class cropSeq(object):
         self.crops=[crop for crop in crops if crop]
         self.tillage_dict=tillage_dict
     
-    def check_match(self, field):
+    def check_match(self, crops):
         '''Check if field's crop sequence matches crop sequence.
         '''
-        return (len(field.params['crop_seq'])>=len(self.crops) and 
-        [all([x==y for x,y in zip(field.params['crop_seq'], self.crops)])])
+        if len(crops)>=len(self.crops):
+            return all([x==y for x,y in zip(crops, self.crops)])
             
-    def respond(self, field):
+    def respond(self, crops):
         '''If field and sequence match, return the tillage dict.'''
-        if self.check_match(field):
+        if self.check_match(crops):
             return self.tillage_dict
     
     def __repr__(self):
@@ -68,26 +68,7 @@ def load_sequences(path=r"C:\Users\benja\VT_P_index\model\Source_data\C_factors.
 crop_seqs=load_sequences()
 #%%    
     
-def search_crop_seq(crops):
-    '''Return the C factor sub-dictionary for a given crop sequence.'''
-    
-    dic=crop_seqs
-    
-    for crop in crops:
-        if 'Tillage' in dic:
-            return dic
-        else:
-            return dic
-            if crop in dic:
-                dic=dic[crop]
-            else:
-                return dic['Other']
-            
-def get_cFactor(crops, tillage):
-    '''Return the C factor for a crop sequence and tillage pattern. '''
-    return search_crop_seq(crops)[tillage]
-    
-    
+        
 class Rotation(object):
     '''A crop rotation. Used for drawing a multi-year crop sequence.'''
     
@@ -109,7 +90,7 @@ class Rotation(object):
     def draw_crops(self, crop_name):
         '''Return a list of crops for this field. 
         The list represents previous crops in the sequence.
-        list[0]: current crop/
+        list[0]: current crop
         list[1]: last year's crop. 
         etc...'''
         if crop_name in self.years:
@@ -130,9 +111,3 @@ class continuous(Rotation):
         return [crop_name]*10
 
 
-
-
-r=Rotation(Corn= 2, 
-            Hay=3)
-
-r.draw_crops('Corn')

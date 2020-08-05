@@ -31,6 +31,9 @@ dic={'Bennington': {'growing season': [1.7, 1.54, 1.66], 'snowmelt': [.75, 1, 1.
 
 
 
+
+
+
 dic2={}
 for county, values in dic.items():
     dic2[county]=[(values['growing season'][i]+values['snowmelt'][i])*.22651 for i in range(0,3)]
@@ -46,7 +49,7 @@ def lookupBRV(county, elevation):
         return values[1]
     elif 1000<elevation<6000:
         return values[2]
-    elif elevation<0 or math.isnan(elevation):
+    elif elevation<=0 or math.isnan(elevation):
         print(f'{elevation} not valid assigning to 0')
         return values[0]
     
