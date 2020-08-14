@@ -22,8 +22,9 @@ class cropSeq(object):
         self.tillage_dict=tillage_dict
     
     def check_match(self, crops):
-        '''Check if field's crop sequence matches crop sequence.
+        '''Return whether the sequence of crops passed to this object matches. 
         '''
+        
         if len(crops)>=len(self.crops):
             return all([x==y for x,y in zip(crops, self.crops)])
             
@@ -43,6 +44,9 @@ def tryfloat(string):
         return math.nan
 
 def load_sequences(path=r"C:\Users\benja\VT_P_index\model\Source_data\C_factors.csv"):
+    '''Load all crop sequences and their C-values from the csv file 
+    located at path.'''
+    
     with open(path) as csv_file:
         reader=csv.reader(csv_file)
         lines=[line for line in reader]
@@ -54,7 +58,9 @@ def load_sequences(path=r"C:\Users\benja\VT_P_index\model\Source_data\C_factors.
     
     for line in lines[1:]:
         crops=tuple([cell for cell in line[0:5]])
-        dic={line[5]:{key: tryfloat(cell) for key, cell in zip(keys[6:10], line[6:10])}}
+        dic={line[5]:{key: tryfloat(cell) for 
+                      key, cell in zip(keys[6:10], line[6:10])}}
+        
         if crops in tillage_dicts:
             tillage_dicts[crops]={**tillage_dicts[crops], **dic}
         else:

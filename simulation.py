@@ -53,14 +53,15 @@ class CropFieldFromShp(CropField):
             series['crop_type']='Small_Grain'
         
         self.params_to_sim=params_to_sim
+        series['soil_is_clay']=bool(series['soil_is_clay'])
         self.known_params=series.to_dict()
         
-        self.known_params['acres']=series['geometry'].area*0.000247105 #sq meters to acres
+        #sq meters to acres
+        self.known_params['acres']=series['acres']
         self.idnum=self.known_params['IDNUM']
         self.set_rotation()
         self.combined_results=[]
         self.run_params=[]
-        self.known_params['soil_is_clay']=bool( self.known_params['soil_is_clay'])
         
     def calcPindex(self):
         CropField.calcPindex(self)
@@ -68,9 +69,9 @@ class CropFieldFromShp(CropField):
         self.combined_results.append(self.results)
         self.run_params.append(self.sim_params)
         
-    def initialize_sim(self, variable_objs):
+    def initialize_sim(self, var_objs):
         '''Set up all needed inputs to run the P Index on Field'''
-        self.simulate_params(variable_objs)
+        self.simulate_params(var_objs)
         self.setup_data()
         self.USLE()
         
@@ -79,13 +80,16 @@ class CropFieldFromShp(CropField):
         '''Return a list of dictionaries, each representing the results and parameters
         for a different model run.'''
         return [{**self.known_params, **run_params, **results} 
-                for run_params, results in zip(self.run_params, self.combined_results)]
+                for run_params, results in 
+                zip(self.run_params, self.combined_results)]
     
     def rotation_sanity_check(self):
         '''Reassign Highly Erodeable fields with implausible crop rotations.
-        Land with potential erosion>100 tons/ac/yr that is in Hay is considered continuous hay.
-        Land with potential erosion >40 that isn't already assigned to continuous hay/fallow 
-        is assigned to 2 years corn, 8 years hay. 
+        Land with potential erosion>100 tons/ac/yr 
+        that is in Hay is considered continuous hay.
+        Land with potential erosion >30 
+        that isn't already assigned to continuous hay/fallow 
+        is assigned to 2 years corn, 6 years hay. 
         '''
         crop_names=['Other', 'Fallow', 'Corn', 'Hay']
         results=()
@@ -110,8 +114,8 @@ class CropFieldFromShp(CropField):
     def set_rotation(self):
         '''Assign the crop rotation to the field.'''
         self.rotation_sanity_check()
-        crop_params={param.split('_')[1]: self.known_params[param]  for param in 
-                                  [p for p in self.known_params if 'Years_' in p]}
+        crop_params={param.split('_')[1]: self.known_params[param]  
+                     for param in self.known_params if 'Years_' in param}
       
         self.rotation=Rotation(**crop_params)
     
@@ -122,7 +126,7 @@ class CropFieldFromShp(CropField):
         is_establishment_year=(crop_seq[0]!=crop_seq[1])
         return crop_seq, is_establishment_year
     
-    def simulate_params(self, variable_objs):
+    def simulate_params(self, var_objs):
         '''Simulate Parameters for the field. 
         pass a dictionary of variable objects. '''
         crop_seq, is_establishment_year=self.sim_rotation()
@@ -134,7 +138,7 @@ class CropFieldFromShp(CropField):
         #parameters simulated directly from variable objects
         variables=self.params_to_sim
         for name in variables:
-            self.sim_params[name]=variable_objs[name].draw(
+            self.sim_params[name]=var_objs[name].draw(
                                             **{**self.known_params, **self.sim_params})
             
             
@@ -142,19 +146,23 @@ class CropFieldFromShp(CropField):
         self.sim_params['veg_type']=self.get_veg_type()
         
         #simulate manure/fertilizer applications
-        self.gen_Manure(variable_objs)
-        self.gen_Fert(variable_objs)
+        self.gen_Manure(var_objs)
+        self.gen_Fert(var_objs)
         
     
           
     def ensemble_results(self):
         sum_results={component:np.mean([r[component] for r in self.combined_results])
                                               for component in self.results.keys() }
-        sum_results['adj_p_lost_lbs']=self.params['acres']*sum_results['total p index']/80
+        sum_results['adj_p_lost_lbs']=np.product([self.params['acres'],
+                                                  sum_results['total p index'],
+                                                  1/80])
         return sum_results
         
         
     def get_veg_type(self):
+        '''Corrections for converting crop_type into veg_type'''
+        
         if self.known_params['crop_type']=='Corn':
             if self.sim_params['cover_crop']:
                 return 'Row crop + successful cover crop'
@@ -164,42 +172,54 @@ class CropFieldFromShp(CropField):
             return veg_type_dict[self.known_params['crop_type']]
 
 
-    def gen_Manure(self, variable_objs):
+    def gen_Manure(self, var_objs):
         '''Generate Manure Applications for this field with simulated data. '''
         
         self.sim_params['manure_applications']=[]
         for i in range(int(self.sim_params['num_manure_applications'])):
-            manure_params={'manure_Type': 'Cow',
-                           'manure_rate': self.sim_params['total_p_applied']/self.sim_params['num_manure_applications']}
-            
-            
-            for m_var in ['incorp_method', 'time_to_incorp', 'date']: #simulated manure parameters
-                params={**manure_params, **self.known_params, **self.sim_params}
-                manure_params[f'manure_{m_var}']=variable_objs[f'manure_{m_var}'].draw(**params)
-            
-            manure_params={key[7:]: value for key, value in manure_params.items()}
-            
-            #initate a manure application object
-            self.sim_params['manure_applications'].append(SimManure(field=self, **manure_params))
+            manure_params=self.setup_manure_params(var_objs)
+            m_app=SimManure(field=self, **manure_params)
+            self.sim_params['manure_applications'].append(m_app)
    
+    def setup_manure_params(self, var_objs):
+        '''Gather all paramters to initialize a simulated manure application.'''
         
+        manure_params={'manure_Type': 'Cow',
+                           'manure_rate': 
+                            (self.sim_params['total_p_applied']
+                            /self.sim_params['num_manure_applications'])}
+            
+        #simulated manure parameters
+        for m_var in ['incorp_method', 'time_to_incorp', 'date']: 
+            params={**manure_params, **self.known_params, **self.sim_params}
+            var_obj=var_objs[f'manure_{m_var}']
+            manure_params[f'manure_{m_var}']=var_obj.draw(**params)
+        
+        manure_params={key[7:]: value for key, value in manure_params.items()}
+        return manure_params
    
-    def gen_Fert(self, variable_objs):
+    
+    def gen_Fert(self, var_objs):
          '''Generate Fertilizer Applications for this field, using simulated data. '''
          self.sim_params['fertilizer_applications']=[]
          
          for i in range(int(self.sim_params['num_fert_applications'])):
             fertilizer_params={'fert_rate':5}
             
-            for p_var in ['fert_incorp_method',
-                'fert_date']:
+            for p_var in ['fert_incorp_method','fert_date']:
+                
                 params={**self.known_params,**self.sim_params}
                 
-                fertilizer_params[f'{p_var}']=variable_objs[f'{p_var}'].draw(**params)
-            fertilizer_params={key[5:]:value for key, value in fertilizer_params.items()}                      
-            self.sim_params['fertilizer_applications'].append(SimFert(field=self, **fertilizer_params))
+                fertilizer_params[f'{p_var}']=var_objs[f'{p_var}'].draw(**params)
+            
+            fertilizer_params={key[5:]:value for
+                               key, value in fertilizer_params.items()}   
+            
+            fert_app=SimFert(field=self, **fertilizer_params)                
+            self.sim_params['fertilizer_applications'].append(fert_app)
          self.params={**self.sim_params, **self.known_params}          
      
+        
     def USLE(self):
         '''Set the erosion rate for the field.'''
         
@@ -213,7 +233,8 @@ class CropFieldFromShp(CropField):
     def getC_fac(self):
         '''Retreive the C factor from USLE.'''
         if self.params['veg_type']=='Row crop + successful cover crop': 
-            crops=['Corn', 'Small_Grain'] #modify crop sequence if its corn following cover crop
+             #modify crop sequence if its corn following cover crop
+            crops=['Corn', 'Small_Grain']
             tillage_timing='spring'
         else:
             crops=self.params['crop_seq']
@@ -226,11 +247,13 @@ class CropFieldFromShp(CropField):
                 break
         try:
             c= dic[tillage_timing][self.params['tillage_method']]
-        except:
+        except KeyError:
             print(dic)
             print(tillage_timing)
             print(self.params['tillage_method'])
             print(self.params)
+            raise
+            
         return c
         
         
@@ -268,7 +291,9 @@ class SimManure(manureApplication):
     def __init__(self, field, rate, date, time_to_incorp, incorp_method, Type):
         incorp_method=manure_method_conversion_dic[incorp_method]
         date=self.get_timing(date, field)
-        manureApplication.__init__(self, field, rate, date, time_to_incorp, incorp_method, Type)
+        manureApplication.__init__(
+            self, field, rate, date, 
+            time_to_incorp, incorp_method, Type)
     
     
     
@@ -279,9 +304,10 @@ class SimManure(manureApplication):
         
         '''
         if date=='spring':
-            if field.sim_params['cover_crop'] or field.sim_params['veg_type'] in [ 'Alfalfa & other hay crops', 
+            if (field.sim_params['cover_crop'] or 
+                field.sim_params['veg_type'] in [ 'Alfalfa & other hay crops', 
                                                  'CRP, other ungrazed, perm. veg.',
-                                                 'Small grains']:
+                                                 'Small grains']):
                 return 'April - vegetated'
                 
             else:
@@ -304,13 +330,16 @@ class simulation():
         self.data_directory=data_directory
         self.fields=[]
         self.params_to_sim=params_to_sim
-        self.variable_objs=sim_variables.load_vars_csv(variables_path)
+        self.var_objs=sim_variables.load_vars_csv(variables_path)
         self.run_name=run_name
         
-    def load_data(self):
+    def load_data(self, cols_to_swap={}):
         '''Load in data from the shapefile in the simulation data_directory.'''
         gdf=load_shape_w_cols(self.data_directory)
         gdf=self.fix_data(gdf)  
+        self.geometries=gdf['geometry']
+        if cols_to_swap:
+            gdf=swap_cols(gdf, cols_to_swap)
         
         for i, row in gdf.iterrows():
             self.fields.append(CropFieldFromShp(row, self.params_to_sim))
@@ -320,7 +349,7 @@ class simulation():
     def load_subset(self, key, values):
         gdf=load_shape_w_cols(self.data_directory)
         gdf=gdf[gdf[key].isin(values)]
-        
+        self.geometries=gdf['geometry']
         gdf=self.fix_data(gdf)  
         for i, row in gdf.iterrows():
             self.fields.append(CropFieldFromShp(row, self.params_to_sim))
@@ -331,7 +360,9 @@ class simulation():
         '''Make minor fixes to how data is represented. '''
         gdf['hydro_group']=gdf['hydro_group'].apply(lambda x: x.split('/')[-1])
         gdf['hydro_group']=gdf['hydro_group'].apply(fix_hydro_group)
-        gdf['buffer_width']=gdf['distance_to_water'] #this may call for a more complex method. 
+        gdf['acres']=gdf['geometry'].area*0.000247105
+        #this may call for a more complex method. 
+        gdf['buffer_width']=gdf['distance_to_water']
         return gdf
 
 
@@ -342,16 +373,18 @@ class simulation():
         for n in range(n_times):
             print(f'Running Simulation #{n+1} out of {n_times}')
             for field in self.fields:
-                field.initialize_sim(self.variable_objs)
+                field.initialize_sim(self.var_objs)
                 field.calcPindex()
-                self.records.append({**{'Sim Number': n}, **field.params, **field.results})
+                self.records.append({**{'Sim Number': n}, 
+                                     **field.params, **field.results})
            
                 
     def load_test(self, size=100):
         '''Load a small subset for a test.'''
         
         gdf=load_shape_w_cols(self.data_directory)
-        gdf=self.fix_data(gdf)  
+        gdf=self.fix_data(gdf)
+        self.geometries=gdf['geometry']
         
         for i, row in gdf.head(100).iterrows():
             self.fields.append(CropFieldFromShp(row, self.params_to_sim))
@@ -404,22 +437,21 @@ class simulation():
         plt.savefig(os.path.join(charts_dir, f'component_{name_modifier}.png'))
         
     def save_results(self):
-        gdf=gpd.GeoDataFrame(self.ensemble_results())
+        gdf=gpd.GeoDataFrame(self.ensemble_results(), geometry=self.geometries)
         self.summary_charts(gdf, 'ensemble_avgs')
         dir_path=os.path.join(os.getcwd(), 'results', self.run_name)
-        df=pd.DataFrame(sim.records)
+        df=pd.DataFrame(self.records)
         self.summary_charts(df, 'all_runs')
         save_shape_w_cols(gdf, dir_path)
         df.to_csv(os.path.join(dir_path, 'all_runs.csv'))
         return gdf, df
     
     
-    #def summarize_results(self, df):
-     #   for crop_type in ['Corn', 'Hay', 'Fallow', "Small_Grain"]:
-      #      df[df['crop_type']==crop_type][
-           # ]
-            
-        
+
+def swap_cols(df, mapping):
+    for key, value in mapping.items():
+        df[key]=df[value]
+    return df    
         
 def total_manure_application(df):
     df['total_manure_applied']=df['total_p_applied']*df['acres']
@@ -431,9 +463,12 @@ def total_manure_application(df):
          ])
     
 def estimate_cow_number(df, county):
-    '''Estimate the number of cows required to produce this quantity of manure P
-     70 lbs P2O5 per cow per year based on an average of values from table 1 of this doc:
+    '''Estimate the number of cows required to produce 
+    this quantity of manure P
+     70 lbs P2O5 per cow per year based on an average of values 
+     from table 1 of this doc:
     https://ag.umass.edu/sites/ag.umass.edu/files/fact-sheets/pdf/EstimatingManureInventory%2811-30%29.pdf'''
+    
     subdf=df[df['county']==county]
     subdf['p_applied']=subdf['total_p_applied']*subdf['acres']
     lbs_p=subdf.groupby('IDNUM')['p_applied'].mean().sum()
@@ -441,21 +476,18 @@ def estimate_cow_number(df, county):
     
 #%%
 def main():
-    
-    
+
     variables_path=r"C:\Users\benja\VT_P_index\model\sim_variables.txt"
     shapes_path=os.path.join(os.getcwd(), 'intermediate_data', 'aoi_fields')
     sim=simulation(shapes_path, params_to_sim, variables_path, 'scratch')
     fields, gdf=sim.load_data()
     sim.simPindex(30)
     
-    
-    
-    return sim, gdf, df
+    return sim, gdf
 
 
 if __name__=='__main__':
-    shapes_path=os.path.join(os.getcwd(), 'intermediate_data', 'aoi_fields')
+    shapes_path=os.path.join(os.getcwd(), 'intermediate_data', 'aoi_fields2')
     params_to_sim=['soil_test_phos',
                      'Al_level',
                      'tile_drain',
@@ -472,10 +504,10 @@ if __name__=='__main__':
     variable_sim_files=os.listdir('variable_simulators')
     for file in variable_sim_files:
         var_fp=os.path.join('variable_simulators', file)
-        run_name=file.split('.')[0]
+        run_name=file.split('.')[0]+'new_rkls'
         sim=simulation(shapes_path, params_to_sim, var_fp, run_name)
-        fields, gdf=sim.load_data()
-        sim.simPindex(30)
+        fields, gdf=sim.load_data(cols_to_swap={'RKLS': 'RKLS2'})
+        sim.simPindex(5)
         sim.save_results()
         
 
