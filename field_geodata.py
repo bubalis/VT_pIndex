@@ -28,7 +28,7 @@ from raster_download import load_counties
 from math import sin as sine
 
 
-
+'''
 def LS_field(length, angle):
     angle=math.radians(angle)
     try:
@@ -54,8 +54,8 @@ def is_complex(x):
     return isinstance(x, complex)
 
 def LS_row(row):
-    return LS_field(row['LENGTH'], row['slope'])
-
+    return LS_field(row['length'], row['slope'])
+'''
 
 
 def get_cropFields():
@@ -332,20 +332,10 @@ def all_unique_values(df, valcol, *args):
 
 
 
-def set_globals(county_codes):
-    '''Setup globals for make geodata calculations.'''
+def set_globals(county_codes, subset=False):
+    '''Setup globals for make geodata calculations.
+    If only running a subset of watersheds, pass subset=True'''
     aoi=load_counties(county_codes)
-    crs=aoi.crs
-    usle_path=os.path.join(os.getcwd(), 'intermediate_data', 'USLE_2')
-    soils_path=os.path.join("Source_data", 
-            "GeologicSoils_SO", "GeologicSoils_SO.shp")
-    
-    soils=load_soils(soils_path, aoi)                        
-    crop_fields=get_cropFields()
-    
-    
-    crop_fields=snip_to_aoi(crop_fields, aoi, dissolve_feature='CNTY')
-    crop_fields['IDNUM']=crop_fields.index
     
     h2O_path=os.path.join('Source_data', 
                           'VT_Subwatershed_Boundaries_-_HUC12-shp',
@@ -353,6 +343,31 @@ def set_globals(county_codes):
     
     h2Osheds=gpd.read_file(h2O_path)
     h2Osheds=snip_to_aoi(h2Osheds, aoi, dissolve_feature='CNTY')
+    crs=aoi.crs
+    usle_path=os.path.join(os.getcwd(), 'intermediate_data', 'USLE')
+    
+    if subset:
+        watersheds=os.listdir(usle_path)
+        h2Osheds=h2Osheds[h2Osheds['HUC12'].isin(watersheds)]
+        aoi=gpd.clip(aoi, h2Osheds)
+    
+    
+    soils_path=os.path.join("Source_data", 
+            "GeologicSoils_SO", "GeologicSoils_SO.shp")
+    
+    soils=load_soils(soils_path, aoi)                        
+    crop_fields=get_cropFields()
+    
+    
+    
+    crop_fields=snip_to_aoi(crop_fields, aoi, dissolve_feature='CNTY')
+    crop_fields['IDNUM']=crop_fields.index
+    
+    
+    
+    
+    
+    
 
     return crop_fields, soils, aoi, h2Osheds  , usle_path
 
@@ -373,14 +388,13 @@ def crop_fields_watersheds(crop_fields, h2Osheds, streams):
     crop_wshed_ovlry['Area']=crop_fields['geometry'].area
     crop_wshed_ovlry.sort_values('HUC12', inplace=True)
     
-    usle_path=os.path.join(os.getcwd(), 'intermediate_data', 'USLE_2')
+    usle_path=os.path.join(os.getcwd(), 'intermediate_data', 'USLE')
     
     
     
     #retreive raster stats for potential erosion, slope and elevation
     crop_wshed_ovlry['RKLS']=retrieve_rastervals(
-                                'RKLS.tif', crop_wshed_ovlry, usle_path,
-                                buffer=-5)
+                                'RKLS.tif', crop_wshed_ovlry, usle_path)
 
     slopes=retrieve_rastervals(
                             'slope.tif', crop_wshed_ovlry, usle_path)
@@ -392,7 +406,7 @@ def crop_fields_watersheds(crop_fields, h2Osheds, streams):
     
     
     crop_wshed_ovlry['elevation']=retrieve_rastervals(
-                            'H2O_shed_DEM.tif', crop_wshed_ovlry, 
+                            'dem.tif', crop_wshed_ovlry, 
                             usle_path, stat='max')
     
     crop_wshed_ovlry['LS']=retrieve_rastervals(
@@ -574,24 +588,6 @@ def set_calculated_values(crop_fields, crop_wshed_ovlry, soils, aoi):
 #to do: vegetated buffer width 
 #%%
 
-def RKLS2(crop_fields, h2Osheds):
-    basins=gpd.GeoDataFrame()
-    for HUC12 in h2Osheds["HUC12"].unique():
-        path=os.path.join('intermediate_data', 'USLE_2', HUC12)
-        if os.path.exists(path):
-            file=os.path.join(path, 'field_basins.shp')
-            basins=basins.append(gpd.read_file(file))
-            
-    gb=basins.groupby('BASIN')
-    vals=gb.max()
-    #vals["AVG_SLOPE"]=gb.mean()['AVG_SLOPE']
-    #vals['BASIN']=vals.index
-    #vals['LS2']=vals.apply(LS_row, axis=1)
-    
-    crop_fields2=pd.merge(crop_fields, vals, left_on='IDNUM', right_on='BASIN', how='inner')
-    crop_fields2["LS2"]=crop_fields2.apply(LS_row, axis=1)
-    crop_fields2['RKLS2']=crop_fields2['LS2']*crop_fields2['K_factor']*83
-    return crop_fields2
 
 def make_streams(h2Osheds, aoi):
     '''Make a shapefile of all bodies of water in the aoi.
@@ -602,7 +598,7 @@ def make_streams(h2Osheds, aoi):
                              "Shape", 'NHDFlowline.shp')
     streams=gpd.read_file(stream_path)
     streams.to_crs(aoi.crs, inplace=True)
-    streams=gpd.sjoin(streams, aoi)
+    streams=gpd.clip(streams, aoi)
     
     
     #rivers:    
@@ -618,12 +614,13 @@ def make_streams(h2Osheds, aoi):
     #add in all water elements
     for path in [river_path, bodies_path, area_path]:
         new_gdf=gpd.read_file(path)
-        new_gdf=snip_to_aoi(new_gdf, aoi, dissolve_feature='CNTY')
-        new_gdf['geometry']=new_gdf['geometry'].boundary
+        gpd.clip(new_gdf, aoi)
+        
+        
         streams=streams.append(new_gdf)
- 
+    streams['Waterway_ID']=streams.index
     save_path=os.path.join(os.getcwd(), 'intermediate_data', 'waterways.shp')
-    streams=streams.drop(columns=['index_right'])
+    #streams=streams.drop(columns=['index_right'])
     
     
     streams=gpd.sjoin(streams, h2Osheds) #break up line segments by H2Oshed codes.
@@ -645,15 +642,16 @@ def plot_globals(crop_fields, soils, aoi, h2Osheds):
 
 if __name__=='__main__':
      county_codes=[1]
-     crop_fields, soils, aoi, h2Osheds, usle_path  = set_globals(county_codes)
+     crop_fields, soils, aoi, h2Osheds, usle_path  = set_globals(county_codes, True)
      plot_globals(crop_fields, soils, aoi, h2Osheds)
      streams=make_streams(h2Osheds, aoi)    
      crop_wshed_ovlry=crop_fields_watersheds(crop_fields, h2Osheds, streams)
      crop_fields=set_calculated_values(crop_fields, crop_wshed_ovlry, soils, aoi)
-     crop_fields['distance_to_water'].hist()
-     crop_fields2=RKLS2(crop_fields, h2Osheds)
-     save_path=os.path.join(os.getcwd(), 'intermediate_data', 'aoi_fields2')
-     save_shape_w_cols(crop_fields2, save_path)
+     #crop_fields['distance_to_water'].hist()
+     crop_fields['RKLS'].hist(bins=100)
+     #crop_fields2=RKLS2(crop_fields, h2Osheds)
+     #save_path=os.path.join(os.getcwd(), 'intermediate_data', 'aoi_fields2')
+     #save_shape_w_cols(crop_fields2, save_path)
      plt.show()
     
 #%%

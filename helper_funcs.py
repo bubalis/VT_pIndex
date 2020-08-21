@@ -50,7 +50,7 @@ def lookupBRV(county, elevation):
     elif 1000<elevation<6000:
         return values[2]
     elif elevation<=0 or math.isnan(elevation):
-        print(f'{elevation} not valid assigning to 0')
+        print(f'Eleveation of {elevation} not valid assigning to 0')
         return values[0]
     
     else:

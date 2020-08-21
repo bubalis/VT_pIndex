@@ -487,7 +487,7 @@ def main():
 
 
 if __name__=='__main__':
-    shapes_path=os.path.join(os.getcwd(), 'intermediate_data', 'aoi_fields2')
+    shapes_path=os.path.join(os.getcwd(), 'intermediate_data', 'aoi_fields')
     params_to_sim=['soil_test_phos',
                      'Al_level',
                      'tile_drain',
@@ -504,10 +504,10 @@ if __name__=='__main__':
     variable_sim_files=os.listdir('variable_simulators')
     for file in variable_sim_files:
         var_fp=os.path.join('variable_simulators', file)
-        run_name=file.split('.')[0]+'new_rkls'
+        run_name=file.split('.')[0]
         sim=simulation(shapes_path, params_to_sim, var_fp, run_name)
-        fields, gdf=sim.load_data(cols_to_swap={'RKLS': 'RKLS2'})
-        sim.simPindex(5)
+        fields, gdf=sim.load_data()
+        sim.simPindex(30)
         sim.save_results()
         
 

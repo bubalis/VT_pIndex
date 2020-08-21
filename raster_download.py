@@ -27,17 +27,50 @@ from rasterio.warp import calculate_default_transform, reproject, Resampling
 from rasterio import RasterioIOError
 from bs4 import BeautifulSoup
 from load_in_funcs import load_counties, load_aoi
-from RKLS_by_watershed import make_ext_gdf, resize_raster
+from Raster_processing import make_ext_gdf
 
 
 #%%
 dst_crs=CRS.from_epsg(32145)
 
 
+
+
+
 file_names={'VT_Data_-_County_Boundaries-shp.zip': 'https://opendata.arcgis.com/datasets/2f289dbae90347c58cd1765db84bd09e_29.zip?outSR=%7B%22latestWkid%22%3A32145%2C%22wkid%22%3A32145%7D',
             'VT_Subwatershed_Boundaries_-_HUC12-shp.zip': 'https://opendata.arcgis.com/datasets/3efbd587cc9a4f078be04fa23db5097a_9.zip?outSR=%7B%22latestWkid%22%3A32145%2C%22wkid%22%3A32145%7D',
             'GeologicSoils_SO.zip': 'http://maps.vcgi.vermont.gov/gisdata/vcgi/packaged_zips/GeologicSoils_SO/GeologicSoils_SO.zip',
             "NHD_H_Vermont_State_Shape.zip": 'https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/NHD/State/HighResolution/Shape/NHD_H_Vermont_State_Shape.zip'}
+
+
+def resize_raster(filepath, factor, out_path):
+    '''Decrease the size of a raster by a scaling factor.'''
+    with rasterio.open(filepath) as dataset:
+
+    # resample data to target shape
+        data = dataset.read(
+            out_shape=(
+                dataset.count,
+                int(dataset.height / factor),
+                int(dataset.width / factor)
+            ),
+            resampling=Resampling.bilinear
+        )
+    
+        # scale image transform
+        out_transform = dataset.transform * dataset.transform.scale(
+            (dataset.width / data.shape[-1]),
+            (dataset.height / data.shape[-2])
+        )
+        out_meta=dataset.meta.copy()
+        out_meta.update({"transform": out_transform,
+                     'width': data.shape[-1],
+                     'height': data.shape[-2],
+                     "driver": "GTiff",}
+                   )
+    with rasterio.open(out_path, 'w+', **out_meta) as dest:
+        dest.write(data)
+
 
 def make_directories():
     source_dir='Source_data'
