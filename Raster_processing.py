@@ -11,12 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
 import re 
-import math
 import ogr
 
-
-import pygeoprocessing
-import pygeoprocessing.routing as pyg_routing
 from whitebox import WhiteboxTools
 import gdal
 import time
@@ -33,7 +29,8 @@ global crs
 main_dir=os.getcwd()
 
 def ensure_dir():
-    '''Reset directory to main directory.'''
+    '''Reset directory to main directory.
+    This is necessary because sometimes wbt does weird things with this. '''
     if os.getcwd()!=main_dir:
         os.chdir(main_dir)
 
@@ -120,21 +117,25 @@ def LS_calculator(sca, slope, aspect, cell_size=2.8):
     
     https://www-jswconline-org.ezproxy.uvm.edu/content/jswc/51/5/427.full.pdf
     '''
+    #prep the arrays
     aspect=np.radians(aspect)
     slope=np.radians(slope)
+    
+    #prep arrays for X_factor and m_factor
     X=np.abs(np.sin(aspect))+np.abs(np.cos(aspect))
     m=calculate_m(slope)
-    numerator=np.power(sca+(cell_size**2),(m+1))-np.power(sca, (m+1))
     
+    numerator=np.power(sca+(cell_size**2),(m+1))-np.power(sca, (m+1))
     denominator=np.power(cell_size,(m+2))*np.power(X, m)*(22.13**m)
     L=numerator/denominator
     
     S=S_factor(slope)
-    
     LS_array= L*S
+    
     return LS_array, L, m, X
 
 
+    
 
 def S_factor(slope):
     '''Calculates slope_factor array for all cells.'''
@@ -154,10 +155,6 @@ def calculate_m(slope):
 
 def make_LS_raster(fps):
     '''Make the LS_factor raster.'''
-    
-    
-    
-  
     with rasterio.open(fps['pointer']) as src:
         aspect=src.read(1)
         cell_size=src.transform[0]
@@ -170,21 +167,6 @@ def make_LS_raster(fps):
         with rasterio.open(fps[string], 'w+', **out_meta) as dst:
             dst.write(np.array([locals()[string]]))
             
-        
-    
-    
-    
-
-
-
-
-
-
-    
-
-
-    
-
 
 def rkls(LS, k, r=83):
     '''Calculate rkls (potential erosion) from LS, k and r.
@@ -208,10 +190,7 @@ def extract_K_facs(fps):
     
     
     
-
-      
- 
-def make_local_fps(fps, HUC12_code):
+def set_local_fps(fps, HUC12_code):
     out_dir=os.path.join(fps['main_out_dir'], HUC12_code)
     for raster in ['LS', 'K_factors','RKLS', 'L', 'm', 'X' , 
                 'pit_filled', 'slope', 'sca', 
@@ -258,10 +237,6 @@ def all_LS_steps(fps, buffers):
     
     
     wbt=WhiteboxTools()
-    
-        
-        
-    
     buffers.to_file(fps['buffers'])
     wbt.breach_depressions(fps['dem'], fps['pit_filled'])
     wbt.slope(fps['pit_filled'], fps['slope'])
@@ -269,7 +244,6 @@ def all_LS_steps(fps, buffers):
     wbt.clip_raster_to_polygon(fps['pointer'], fps['buffers'], fps['pointer'], maintain_dimensions=True)
     wbt.d_inf_flow_accumulation(fps['pointer'], fps['sca'])
     make_LS_raster(fps)
-    
     ensure_dir()
     
 
@@ -302,7 +276,7 @@ def merge_tiles_raster(tile_codes, dems_dir, watershed_geom):
     masked_files=[]
     files_to_merge=list_tiles_to_merge(tile_codes, dems_dir)
     for raster_path in files_to_merge:
-        out_path=os.path.join('scratch', raster_path.split('\\')[-1])
+        out_path=os.path.join('scratch', os.path.split(raster_path)[-1])
         try:
             mask_raster(raster_path, watershed_geom, out_path)
             masked_files.append(out_path)
@@ -337,8 +311,6 @@ def merge_tiles_raster(tile_codes, dems_dir, watershed_geom):
 
 
  
-
-    
 def mask_raster(raster_path, shapes, out_path=None):
     '''Mask a raster with the geometries given in shapes.
     Save to out_path. If out_path is not specified, save to original path.'''
@@ -356,17 +328,12 @@ def mask_raster(raster_path, shapes, out_path=None):
     with rasterio.open(out_path, "w+", **out_meta) as dest:
         dest.write(out_image)
 
-
-
 #%%   
-
-
-
 def watershed_raster(HUC12, H2Oshed_tiles, 
                          fps, watershed_geom, crs):
     
     
-    '''Make a DEM raster for a watershed. Save it as out_dir\dem. '''
+    '''Make a DEM raster for a watershed. Save it as out_dir\dem.tif '''
     #collect rasters to merge together
     
     tile_codes=H2Oshed_tiles[HUC12]
@@ -554,8 +521,8 @@ def run_watershed(HUC12_code, ext,  H2Oshed_tiles, watersheds, all_buffers, fps
     
     buffers=gpd.overlay(ext[ext['HUC12']==HUC12_code], all_buffers)
     print(HUC12_code)
-    fps=make_local_fps(fps, HUC12_code)
-    tiles=list_tiles_to_merge(H2Oshed_tiles[HUC12_code], dems_dir)
+    fps=set_local_fps(fps, HUC12_code)
+    tiles=list_tiles_to_merge(H2Oshed_tiles[HUC12_code], fps['dem_dir'])
     if all([(not os.path.exists(fps['out_dir'])),
             HUC12_code in ext['HUC12'].unique(),
             H2Oshed_tiles[HUC12_code],
@@ -577,8 +544,6 @@ def run_watershed(HUC12_code, ext,  H2Oshed_tiles, watersheds, all_buffers, fps
             for line in H2Oshed_tiles[HUC12_code]:
                 print(line, file=f)
            
-        
-            
 def dissolve_to_single_shape(gdf):
     gdf['null']=0
     return gdf.dissolve(by='null')            

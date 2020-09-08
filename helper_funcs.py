@@ -4,14 +4,15 @@ Created on Thu May  7 11:23:33 2020
 
 @author: benja
 """
-import datetime
+
 import csv
-import string
+
 import math
 
 
-
-dic={'Bennington': {'growing season': [1.7, 1.54, 1.66], 'snowmelt': [.75, 1, 1.81] },  
+#This is the runnoff dictionary from the technical docs:
+    
+BRVdic={'Bennington': {'growing season': [1.7, 1.54, 1.66], 'snowmelt': [.75, 1, 1.81] },  
  'Rutland': {'growing season': [1.7, 1.54, 1.66], 'snowmelt': [.75, 1, 1.81] },
  'Windham': {'growing season': [1.53, 1.62, 1.78], 'snowmelt': [.94, 1.25, 1.94] },
  'Windsor': {'growing season': [1.53, 1.62, 1.78], 'snowmelt': [.94, 1.25, 1.94] },
@@ -33,16 +34,16 @@ dic={'Bennington': {'growing season': [1.7, 1.54, 1.66], 'snowmelt': [.75, 1, 1.
 
 
 
-
-dic2={}
-for county, values in dic.items():
-    dic2[county]=[(values['growing season'][i]+values['snowmelt'][i])*.22651 for i in range(0,3)]
+#Make adjustments to make the second Base-Runoff Volume Dict
+BRVdic2={}
+for county, values in BRVdic.items():
+    BRVdic2[county]=[(values['growing season'][i]+values['snowmelt'][i])*.22651 for i in range(0,3)]
     
 def lookupBRV(county, elevation):
     '''Lookup the Base Runoff Volume for a field, based on county and elevation.
     Based on table 5 on page 8 of VTPI docs.
     '''
-    values=dic2[county]
+    values=BRVdic2[county]
     if 0<elevation<600:
         return values[0]
     elif 600<=elevation<=1000:
@@ -68,6 +69,7 @@ runoff_adj_dict={'Corn & other row crops': [0.42, 0.25, 1.00, 0.75, 1.96, 1.48, 
 'CRP, other ungrazed, perm. veg.': [.01, 0.01, 0.12, 0.12, 0.5, 0.50, 1.00, 1.00], 
 'Woodland': [.01, 0.01, 0.15, 0.15, 0.62, 0.62, 1.10, 1.10],
 'Hay': [0.12, 0.12, .55, 0.55, 1.37, 1.37, 1.98, 1.98]}
+
 
 def runoff_parser(crop_name, cover_crop):
     if crop_name in runoff_adj_dict:
@@ -126,6 +128,7 @@ def lookup_RAF(hydro_group, veg_type, cover_perc, tile_drain):
         print('RAF assigned to Zero.')
     return out
 
+
 soil_hydro_factors={'A': 0.5,
 'B': 1.0,
 'C': 1.6,
@@ -162,7 +165,9 @@ fertilizer_app_dict={
 'Inj. or subsurf. banded': 0
 }
 
+
 def getFertFactor(method, date):
+    '''Retrieve Fertilize Factor, based on method and date.'''
     if method=='Surface Applied':
         return fertilizer_app_dict[(method, date)]
     elif method=='not incorporated':
@@ -190,21 +195,7 @@ manure_method_dict={
 }
 
 
-'''
-def manure_timing(date, vegetation):
-    day_of_year=date.timetuple().tm_yday
-    if 350>=day_of_year or day_of_year<92:
-        return 1.3
-    elif 92>=day_of_year<122:
-        if vegetation:
-            return .6
-        else: 
-            return .8
-    elif 122>=day_of_year<275:
-        return .5
-    elif 275>=day_of_year<350:
-        return 1
-'''
+
 
 manure_timing_dic={'May - Sept': 0.5,
 'Oct - Dec 15': 1.0,
@@ -244,7 +235,8 @@ def incorp_timing(days, method):
         return .74
     else:
         return 1
-    
+
+
 uptake_dict={'Corn & other row crops': 100,
  'Row crop + successful cover crop': 50,
  'Small grains': 50,
@@ -261,8 +253,8 @@ def manure_factor(manure_date, method, time_to_incorp):
     Described pages 3-4 in the docs.
     date: datetime obj of application, 
     method: string
-    time_to_incorp: numeric,
-    vegetation: boolean.'''
+    time_to_incorp: int,
+    '''
     
     method_factor= manure_method_dict[method]
     risk=incorp_timing(time_to_incorp, method)

@@ -27,9 +27,7 @@ class CropField():
         self.results['total p lost (kg/ha)']=(self.results['total p index']-
                                               self.results['surface particulate loss']+
                                               self.results['non_adjusted_surf_partic_loss'])/80*2.47/2.2
-        
-        return self.results
-        
+        return self.results      
     
     
     def setup_data(self):
@@ -41,9 +39,6 @@ class CropField():
         self.params['soil_total_phos']=calc_soilTP(self.params['soil_test_phos'], self.params['soil_is_clay'])
         self.params['runoff_adj_factor']=lookup_RAF(self.params['hydro_group'], self.params['veg_type'], self.params['cover_perc'], self.params['tile_drain'])
         self.params["baseROV"]=lookupBRV(self.params['county'], self.params['elevation'])
-        
-        
-        
         self.params['hydro_factor']=get_soil_hyd_factor(self.params['hydro_group'], self.params['tile_drain'])
         self.params['RDR_factor']=calcRDR(**self.params)
         self.params['crop_uptake']=uptake_dict[self.params['veg_type']]
@@ -51,10 +46,7 @@ class CropField():
         self.results={}
         self.link_to_apps()
         self.add_soil_P()
-    
-    
-  
-               
+
     
     def sum_fractions(self, functions_to_sum, default_args={}, update=True):
         '''Return the sum of multiple functions, with all of the field's parameters passed to that function.
@@ -85,7 +77,6 @@ class CropField():
     
     def subsurface_loss(self, scaling_factor=80):
         '''Subsurface loss from tile drainage. Page 10-11 of technical docs. '''
-        
         PF6=.2
         default_args={'SDR_factor':1, 
                       'RDR_factor':1, 
@@ -103,8 +94,6 @@ class CropField():
         else:
             return 0
         
-        
-        
     def link_to_apps(self):
         '''Set linkages between p applications and field object.'''
         self.manure_applications=self.params['manure_applications']
@@ -112,8 +101,6 @@ class CropField():
         self.params['total_p_added']=sum([app.rate for app in self.manure_applications+self.fertilizer_applications])
         for app in self.manure_applications+self.fertilizer_applications:
             app.link_to_field(self)
-        
-        
             
     def add_soil_P(self):
         '''Increase soil P levels to reflect fertilizer and manure applications.
@@ -137,12 +124,6 @@ original soil test P. The estimate cannot be greater than this limiting value.
                                     [calc_soilTP(adj_stp, self.params['soil_is_clay']),
                                            self.params['soil_total_phos']+added_TP])
         self.params['adj_test_phos']=adj_stp
-                   
-                      
-
-        
-        
-
     
 
 class CropFieldFromDic(CropField):
@@ -201,22 +182,22 @@ def total_eroded_soilP(erosion_rate, adj_total_phos, **kwargs):
 def P_avail(adj_test_phos):
     '''TP availability factor. From Page 6:
     This factor ranges from 0.2 (i.e., 20% of TP is algal available) 
-at a soil test P of 0 ppm, to a maximum of 0.4 at STP = 100 ppm
+at a soil test P of 0 ppm, to a maximum of 0.4 at STP = 100 ppm.
+Note that the Technical docs are for V 6.0, while excel spreadsheet is version 6.1
         '''
     if adj_test_phos<100:
         return .2+adj_test_phos/100*.2
     else:
         return .4
-    
-    
+       
     
 def P_avail_excel(adj_test_phos):
-    '''TP availability factor. This formula from the excel spreadsheet'''
+    '''TP availability factor. This formula from the excel spreadsheet.
+    Note that the Technical docs are for V 6.0, while excel spreadsheet is version 6.1'''
     if adj_test_phos<100:
         return .1+adj_test_phos/1000
     else:
         return .2
-
 
 
 def manure_partic_P(manure_applications, **kwargs):
@@ -244,27 +225,25 @@ def DRP(adj_test_phos):
 Research involving simulated rainfall applied to field plots on a wide variety of Vermont
 agricultural soils has provided a good relationship between soil test P (STP) and DRP
 concentration in runoff: DRP = 0.1275 + 0.0104 * STP (see Figure 4). Soil test P is first
-adjusted for any increment due to manure or fertilizer P added since the soil test was made''' 
+adjusted for any increment due to manure or fertilizer P added since the soil test was made.
+
+Note that the Technical docs are for V 6.0, while excel spreadsheet is version 6.1
+''' 
     return .1275+(.0104*adj_test_phos)
 
 
 
 def DRPexcel(adj_test_phos):
-    '''Dissolved Reactive Phosphorus Based on #s in the excel model'''
+    '''Dissolved Reactive Phosphorus Based on #s in the excel model.
+    Note that the Technical docs are for V 6.0, while excel spreadsheet is version 6.1'''
     return 2*(.00705*adj_test_phos+.03)
     
-
-
-
     
 def dis_manureP(manure_applications, RDR_factor, **kwargs):
     '''Calculate sum of dissolved loss from Manure Applications.
     Multiply by sdr and .44 to convert to lbs P'''
     sdr=SDRm(buffer=False, **kwargs)
     return sum([m_app.dissolved_loss for m_app in manure_applications])*sdr*.44
-
-    
-
 
 
     
@@ -420,7 +399,7 @@ class fertApplication(pApplication):
         self.date=date
         self.rate=rate
         self.method_factor=getFertFactor(self.incorp_method, self.date)
-    
+        self.partic_loss=0 #no p lost in particulate form
 
 
     
@@ -443,7 +422,7 @@ The Aluminum and Fertilizer Factors are explained above.
      
     def calcParticLoss(self):
         '''No P is lost from fertilizer in partic form.'''
-        self.partic_loss=0
+        pass
       
         
     def TPincr(self):

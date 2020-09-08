@@ -25,37 +25,7 @@ from rasterio.mask import mask
 from rasterstats import zonal_stats
 from raster_download import load_counties
 
-from math import sin as sine
 
-
-'''
-def LS_field(length, angle):
-    angle=math.radians(angle)
-    try:
-        s_angle=sine(angle)
-        slope=math.atan(angle)
-        if slope<.09:
-            S=10.8*s_angle+.03
-        else:
-            S=16.8*s_angle-.5
-        beta=calc_beta(s_angle)
-        m=calc_M(beta)
-        return (length/22.13)**m*S
-    except TypeError:
-        return 0
-        
-def calc_beta(s_angle):
-    return s_angle/(3*s_angle**.8+.56)
-
-def calc_M(beta):
-    return beta/(1+beta)
-
-def is_complex(x):
-    return isinstance(x, complex)
-
-def LS_row(row):
-    return LS_field(row['length'], row['slope'])
-'''
 
 
 def get_cropFields():
@@ -203,18 +173,16 @@ def dist_to_water_simple(field, stream_line):
 
 #%%
         
-def all_dist_to_water(crop_wshed_ovlry, streams, h2Osheds, usle_path):
+def all_dist_to_water(crop_wshed_ovrly, streams, h2Osheds, usle_path):
     '''Find distance to water for all fields in the crop-fields gdf.'''
     print('Calculating Distance to Water for fields.')
     results =[]
-    points=[]
-    for HUC12_code in crop_wshed_ovlry['HUC12'].unique():
-        #raster_path=os.path.join(usle_path, HUC12_code, 'flow_acc.img')
-        #raster=rasterio.open(raster_path)
-        
+    sum_shape=0
+    #points=[]
+    for HUC12_code in crop_wshed_ovrly['HUC12'].unique():
         #streams into a single geometric object for that watershed. 
         stream_line=streams[streams['HUC12']==HUC12_code].dissolve('HUC12')
-        ovly_selection=crop_wshed_ovlry[crop_wshed_ovlry['HUC12']==HUC12_code]
+        ovly_selection=crop_wshed_ovrly[crop_wshed_ovrly['HUC12']==HUC12_code]
         
         for i,field in ovly_selection.iterrows():
             dist, point=dist_to_water_simple(field, stream_line)
@@ -222,8 +190,12 @@ def all_dist_to_water(crop_wshed_ovlry, streams, h2Osheds, usle_path):
             #deleted complex method of calculating distance to H2O
             #dist, point=dist_to_water(field, raster, stream_line)
             results.append(dist)
-            points.append(point)
-    return results, points
+            #points.append(point)
+        print(HUC12_code)
+        print(len(results))
+        sum_shape+=ovly_selection.shape[0]
+        print(sum_shape)
+    return results #points
 
 
 
@@ -238,10 +210,11 @@ def get_max_point(raster):
     a=raster.read(1)
     y, x=np.where(a==a.max())
     return gpd.GeoSeries(point_from_raster_cell(y[0],x[0], raster), crs=raster.crs)
-    
+   
     
 
-def retrieve_rastervals(raster_file_name, crop_fields, usle_path, stat='mean', buffer=None):
+def retrieve_rastervals(raster_file_name, crop_fields, 
+                        usle_path, stat='mean', buffer=None):
     '''Get zonal statistics for all shapes in a gdf. 
     '''
     
@@ -258,6 +231,7 @@ def retrieve_rastervals(raster_file_name, crop_fields, usle_path, stat='mean', b
         subset=crop_fields[crop_fields['HUC12']==HUC12_code]
         if buffer:
             subset['geometry']=subset.geometry.buffer(buffer)
+        
         results+=extract_zonal_stats(raster_path,subset, stat)
         
     
@@ -280,7 +254,8 @@ def extract_zonal_stats(raster_path, gdf, stat):
         for i, row in gdf.iterrows():
             row=gpd.GeoDataFrame(row)
             if row[row.columns[0]].geometry.area>5:
-                response=zonal_stats(vectors=row[row.columns[0]]['geometry'], raster=raster_path, stats=[stat])
+                response=zonal_stats(vectors=row[row.columns[0]]['geometry'], 
+                                     raster=raster_path, stats=[stat])
                 if response[0]:
                     r=response[0]
                     #   print(r)
@@ -308,7 +283,8 @@ def weighted_avg(df, avgcol, weight_col):
 
 
 def weighted_mode(df, cat_col, weight_col):
-    '''Return the category which is most prevalent in a series of a datatframe based on weights.
+    '''Return the category which is most prevalent 
+    in a series of a datatframe based on weights.
     df: a dataframe
     cat_col: the column with categories.
     weight_col: the column with weights.'''
@@ -320,7 +296,8 @@ def weighted_mode(df, cat_col, weight_col):
 
 
 def weighted_boolean_avg(df, avgcol, weight_col):
-    '''Return the weighted avg of a column of the dataframe, where the column is a boolean.
+    '''Return the weighted avg of a column of the dataframe, 
+    where the column is a boolean.
     df: a dataframe.
     avgcol: a column of boolean values.
     weight_col: the column with weight values. '''
@@ -333,7 +310,7 @@ def all_unique_values(df, valcol, *args):
 
 
 def set_globals(county_codes, subset=False):
-    '''Setup globals for make geodata calculations.
+    '''Setup globals for making geodata calculations.
     If only running a subset of watersheds, pass subset=True'''
     aoi=load_counties(county_codes)
     
@@ -382,45 +359,43 @@ def crop_fields_watersheds(crop_fields, h2Osheds, streams):
     They have to be calculated and recombined for fields which straddle watersheds.
     '''
     print('Making calulations on Watershed Level')
+    
     #prep the crop fields by watersheds gdf
     
-    crop_wshed_ovlry=gpd.overlay(h2Osheds, crop_fields, how='intersection')
-    crop_wshed_ovlry['Area']=crop_fields['geometry'].area
-    crop_wshed_ovlry.sort_values('HUC12', inplace=True)
+    crop_wshed_ovrly=gpd.overlay(h2Osheds, crop_fields, how='intersection')
+    crop_wshed_ovrly['Area']=crop_fields['geometry'].area
+    crop_wshed_ovrly.sort_values('HUC12', inplace=True)
     
     usle_path=os.path.join(os.getcwd(), 'intermediate_data', 'USLE')
     
     
-    
     #retreive raster stats for potential erosion, slope and elevation
-    crop_wshed_ovlry['RKLS']=retrieve_rastervals(
-                                'RKLS.tif', crop_wshed_ovlry, usle_path)
+    crop_wshed_ovrly['RKLS']=retrieve_rastervals(
+                                'RKLS.tif', crop_wshed_ovrly, usle_path)
 
-    slopes=retrieve_rastervals(
-                            'slope.tif', crop_wshed_ovlry, usle_path)
-    try:
-        crop_wshed_ovlry['slope']=slopes
-    except:
-        globals()['slopes']=slopes
-        raise
+    crop_wshed_ovrly['slope']=retrieve_rastervals(
+                            'slope.tif', crop_wshed_ovrly, usle_path)
     
     
-    crop_wshed_ovlry['elevation']=retrieve_rastervals(
-                            'dem.tif', crop_wshed_ovlry, 
+    crop_wshed_ovrly['elevation']=retrieve_rastervals(
+                            'dem.tif', crop_wshed_ovrly, 
                             usle_path, stat='max')
     
-    crop_wshed_ovlry['LS']=retrieve_rastervals(
-                            'LS.tif', crop_wshed_ovlry, usle_path)
+    crop_wshed_ovrly['LS']=retrieve_rastervals(
+                            'LS.tif', crop_wshed_ovrly, usle_path)
     
     #calculate distance to water and erosion outflow points
-    distances, outflow_points=all_dist_to_water(
-                                crop_wshed_ovlry, streams, 
+    distances=all_dist_to_water(
+                                crop_wshed_ovrly, streams, 
                                 h2Osheds, usle_path)
 
-    crop_wshed_ovlry['distance_to_water']=distances
-    crop_wshed_ovlry['outflow_points']=outflow_points
-    
-    return  crop_wshed_ovlry
+    try:
+        crop_wshed_ovrly['distance_to_water']=distances
+    #crop_wshed_ovrly['outflow_points']=outflow_points
+    except:
+        globals().update({'crop_wshed_ovrly':crop_wshed_ovrly, 'distances': distances})
+        raise
+    return  crop_wshed_ovrly
 #%%
 
 def parse_crop_rots(string):
@@ -477,7 +452,7 @@ class Column_Summary_by_Area():
     def calc_and_append(self, df):
         self.results.append(self.calculate(df))
 
-def set_calculated_values(crop_fields, crop_wshed_ovlry, soils, aoi):
+def set_calculated_values(crop_fields, crop_wshed_ovrly, soils, aoi):
     '''Extract values from overlays, and re-assign based on the appropriate measure of central tendency. 
     
     '''
@@ -491,7 +466,7 @@ def set_calculated_values(crop_fields, crop_wshed_ovlry, soils, aoi):
     soils_overlay=gpd.overlay(soils, crop_fields, how='intersection')
     soils_overlay['area']=soils_overlay['geometry'].area
     soils_overlay['hydro_group']=soils_overlay['HYDROGROUP'].apply(h_group_fixer)
-    crop_wshed_ovlry['area']=crop_wshed_ovlry['geometry'].area
+    crop_wshed_ovrly['area']=crop_wshed_ovrly['geometry'].area
     print(soils_overlay.columns)
     
     H2O_col_aggregators=[Column_Summary_by_Area(col_name, func_name) 
@@ -517,7 +492,7 @@ def set_calculated_values(crop_fields, crop_wshed_ovlry, soils, aoi):
    
     for idnum in crop_fields['IDNUM'].tolist():
         #extract values from the watershed-based gdf 
-        subset_watershed=crop_wshed_ovlry[crop_wshed_ovlry['IDNUM']==idnum]
+        subset_watershed=crop_wshed_ovrly[crop_wshed_ovrly['IDNUM']==idnum]
         for agg in H2O_col_aggregators:
             agg.calc_and_append(subset_watershed)
         
@@ -596,10 +571,10 @@ def make_streams(h2Osheds, aoi):
     
     stream_path=os.path.join('source_data', 'NHD_H_Vermont_State_Shape', 
                              "Shape", 'NHDFlowline.shp')
+    
     streams=gpd.read_file(stream_path)
     streams.to_crs(aoi.crs, inplace=True)
     streams=gpd.clip(streams, aoi)
-    
     
     #rivers:    
     river_path=os.path.join( 'source_data', 'NHD_H_Vermont_State_Shape', 
@@ -608,16 +583,17 @@ def make_streams(h2Osheds, aoi):
     bodies_path=os.path.join('source_data', 'NHD_H_Vermont_State_Shape',
                              "Shape", 'NHDWaterbody.shp')
     #other areas?
-    area_path=os.path.join('source_data', 'NHD_H_Vermont_State_Shape', 
-                           "Shape", 'NHDArea.shp')    
+    
     
     #add in all water elements
-    for path in [river_path, bodies_path, area_path]:
+    for path in [river_path, bodies_path]:
         new_gdf=gpd.read_file(path)
-        gpd.clip(new_gdf, aoi)
+        new_gdf=gpd.clip(new_gdf, aoi)
+        new_gdf.geometry=new_gdf.geometry.boundary
         
         
         streams=streams.append(new_gdf)
+        
     streams['Waterway_ID']=streams.index
     save_path=os.path.join(os.getcwd(), 'intermediate_data', 'waterways.shp')
     #streams=streams.drop(columns=['index_right'])
@@ -645,14 +621,14 @@ if __name__=='__main__':
      crop_fields, soils, aoi, h2Osheds, usle_path  = set_globals(county_codes, True)
      plot_globals(crop_fields, soils, aoi, h2Osheds)
      streams=make_streams(h2Osheds, aoi)    
-     crop_wshed_ovlry=crop_fields_watersheds(crop_fields, h2Osheds, streams)
-     crop_fields=set_calculated_values(crop_fields, crop_wshed_ovlry, soils, aoi)
+     crop_wshed_ovrly=crop_fields_watersheds(crop_fields, h2Osheds, streams)
+     crop_fields=set_calculated_values(crop_fields, crop_wshed_ovrly, soils, aoi)
      #crop_fields['distance_to_water'].hist()
      crop_fields['RKLS'].hist(bins=100)
      #crop_fields2=RKLS2(crop_fields, h2Osheds)
      #save_path=os.path.join(os.getcwd(), 'intermediate_data', 'aoi_fields2')
      #save_shape_w_cols(crop_fields2, save_path)
      plt.show()
-    
+
 #%%
 
