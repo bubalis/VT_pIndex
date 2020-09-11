@@ -42,7 +42,7 @@ f_date_conversion_dic={'summer' :'May-September',
  'fall': 'October-December 15',
  'winter': 'December 15-March' }
 
-  
+hydro_int_dict={letter: i for i, letter in enumerate(['A', 'B', 'C', 'D'])}  
 
  
 class CropFieldFromShp(CropField):
@@ -399,12 +399,15 @@ class simulation():
         self.records=[]
         global index_counter
         
-        num_draws=len(self.fields)*n_times
         for v in self.var_objs.values():
             print(f'Drawing up values for {v}')
-            v.dist_func.setup_for_draws(num_draws)
+            v.setup_for_draws(len(self.fields))
             
         for n in range(n_times):
+            index_counter=0
+            for v in self.var_objs.values():
+                v.shuffle()
+                
             print(f'Running Simulation #{n+1} out of {n_times}')
             for field in self.fields:
                 field.initialize_sim(self.var_objs)
@@ -456,7 +459,7 @@ class simulation():
         plt.title(f'{self.run_name}   {name_modifier}')
         plt.savefig(os.path.join(charts_dir, f'p_hist_{name_modifier}.png'))
         
-        hydro_int_dict={letter: i for i, letter in enumerate(['A', 'B', 'C', 'D'])}
+        
         df['hydro_int']=df['hydro_group'].apply(lambda x: hydro_int_dict.get(x))
         input_cols=['RKLS',
         'erosion_rate',
@@ -471,14 +474,16 @@ class simulation():
         plt.tight_layout()
         plt.savefig(os.path.join(charts_dir, f'component_{name_modifier}.png'))
         
-    def save_results(self, charts=False):
+    def save_results(self, charts=True):
         gdf=gpd.GeoDataFrame(self.ensemble_results(), geometry=self.geometries)
-        
+        gdf['hydro_int']=gdf['hydro_group'].apply(lambda x: hydro_int_dict.get(x))
         dir_path=os.path.join(os.getcwd(), 'results', self.run_name)
         df=pd.DataFrame(self.records)
+        df['hydro_int']=df['hydro_group'].apply(lambda x: hydro_int_dict.get(x))
+        
         if charts:
             self.summary_charts(gdf, 'ensemble_avgs')
-            self.summary_charts(df, 'all_runs')
+            #self.summary_charts(df, 'all_runs')
         save_shape_w_cols(gdf, dir_path)
         df.to_csv(os.path.join(dir_path, 'all_runs.csv'))
         return gdf, df
@@ -536,8 +541,9 @@ if __name__=='__main__':
         run_name=file.split('.')[0]
         sim=simulation(shapes_path, params_to_sim, var_fp, run_name)
         fields, gdf=sim.load_data()
-        sim.simPindex(50)
+        sim.simPindex(250)
         sim.save_results()
+        
     end=time.perf_counter()
     print('Total Time to run:')
     print(end-start)

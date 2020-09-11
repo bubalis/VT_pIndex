@@ -84,31 +84,23 @@ def load_vars_csv(path):
             dic={key:cell_parser(value) for key, value in zip(keys, row)}
             
             if dic['Name']:
-                variables[dic['Name']]=Variable_from_dict(dic, variables)
+                variables[dic['Name']]=variable_from_dict(dic, variables)
         
         return variables
 
 
-
-
 class Variable():
     '''Class for any variable being simulated.'''
+    def __init__(self, dist_name, var_name, variable_dic, description, **kwargs):
+        self.var_name=var_name
+        self.dist_name=dist_name
+        self.all_variables=variable_dic
+        self.description=description
+               
     
-    def __init__(self, name, dist, **kwargs):
-        self.dist_func=dist(**kwargs)
-        self.var_name=name
+    def __repr__(self):
+        return f'{self.var_name}, {self.dist_name}. \nDescription: \n{self.description}'
         
-    def draw(self, size,  **kwargs):
-        '''Draw a single random or conditional value.'''
-        try:
-            return self.dist_func.rvs(size=size, **kwargs)
-        except:
-            print(self)
-            raise
-            
-    def draw1(self, **kwargs):
-        return self.draw(size=1,**kwargs)[0]
-            
     def draw_no_replacement(self, size, **kwargs):
         '''Make multiple draws without replacement.'''
         results=[]
@@ -120,13 +112,18 @@ class Variable():
                     break
         return results
     
-    def __repr__(self):
-        return f'Variable Generator: {self.var_name} \n {self.dist_func}'
+    def setup_for_draws(self, n):
+        self.array=self.draw(size=n)
+        
+    
+    def shuffle(self):
+        np.random.shuffle(self.array)
     
     def drawFrom(self, i, **kwargs):
-        return self.dist_func.drawFrom(i, **kwargs)
+        return self.array[i]
     
-class Variable_from_dict(Variable):
+    
+def variable_from_dict(dic,  variable_dic, **kwargs):
     '''Initialize a variable from a dictionary: 
     keys are:
     Name : variable name.
@@ -135,84 +132,44 @@ class Variable_from_dict(Variable):
     param {i} value: value of parameter. 
     Up to i==5. '''
     
-    
-    def __init__(self, dic, variable_dic):
-        
-        self.var_name=dic['Name']
-        try:
-            self.description=dic['Description']
-            kwargs={}
-            for i in range(1,6):
-                kwargs[dic[f'param {str(i)} name']]=dic[f'param {str(i)} value']
-            kwargs={k:v for k,v in kwargs.items() if k}
-            dist=dic['Distribution']
+     
+    var_name=dic['Name']
+    try:
+        description=dic['Description']
+        kwargs={}
+        for i in range(1,6):
+            kwargs[dic[f'param {str(i)} name']]=dic[f'param {str(i)} value']
+        kwargs={k:v for k,v in kwargs.items() if k}
+        dist=dic['Distribution']
+        return variable_maker(dist, var_name, variable_dic, description,
+                              **kwargs)
             
-            self.dist_func=create_dist(
-                dist, self.var_name, 
-                variable_dic, **kwargs)
-        except:
-            print(self.var_name)
-            print(kwargs)
-            print(variable_dic)
-            raise
+    except:
+        print(var_name)
+        print(kwargs)
+        print(variable_dic)
+        raise
             
 
+def variable_maker(dist, var_name, variable_dic, description,  **kwargs):
+        d=globals().get(dist)
+
+        if  d: #  if the variable is defined in this script
+            return d(var_name=var_name, variable_dic=variable_dic, description=description, **kwargs)
         
-def create_dist(dist_name, var_name,  variable_dic, **kwargs):
-    '''Retrieve distribution from globals and initialize it. 
-    Return a probability distribution obj and 
-    a string indicating whether the dist is User-defined or from a package.
-    '''
-    d=globals().get(dist_name)
+        elif '.' in dist: #if the variable is defined in an imported package
+            return ProbDistFromMod(dist, var_name, variable_dic, description=description, **kwargs) 
+         
+        else:
+            raise ValueError(
+                f'"{dist_name}" not defined in script or in imported package')
+
     
-    if  d: #  if the variable is defined in this script
-        return d(var_name=var_name, variable_dic=variable_dic, **kwargs)
     
-    elif '.' in dist_name: #if the variable is defined in an imported package
-        return ProbDistFromMod(dist_name, var_name, variable_dic, **kwargs) 
-     
-    else:
-        raise ValueError(
-            f'"{dist_name}" not defined in script or in imported package')
     
- 
-   
-  
-class ProbDist(): 
-    '''Metaclass for probability distributions.'''
-    def __init__(self, dist_name, var_name, variable_dic, **kwargs):
-        self.var_name=var_name
-        self.dist_name=dist_name
-        self.all_variables=variable_dic
-               
-    
-    def __repr__(self):
-        return f'{self.var_name}, {self.dist_name}'
-    
-    def rvs(self, size, **kwargs):
-        response= self.draw(size=size, **kwargs) 
-        try:
-           
-            return response
-        except:
-            print('Error')
-            
-            print(self)
-            print(response[0])
-            globals()['response']=response
-            print('Program should terminate here')
-            raise
-            assert False
-    
-    def setup_for_draws(self, n):
-        self.array=self.rvs(n)
-    
-    def drawFrom(self, i, **kwargs):
-        return self.array[i]
-    
-class customDist(ProbDist):
+class customDist(Variable):
     def __init__(self,  dist_name, var_name, variable_dic, **kwargs):
-        ProbDist.__init__(self, dist_name, var_name, variable_dic, **kwargs)
+        Variable.__init__(self, dist_name, var_name, variable_dic, description,  **kwargs)
 
     def draw1(self, **kwargs):
         return self.draw(size=1, **kwargs)[0]
@@ -228,15 +185,18 @@ class Dist_w_conditional(customDist):
     def setup_for_draws(self, n):
         pass
     
+    def shuffle(self):
+        pass
+    
     
         
-class ProbDistFromMod(ProbDist):
+class ProbDistFromMod(Variable):
     '''Probability Distribution from an imported module.
     e.g. any distribution in the scipy.stats library:
         stats.nbinom, stats.normal etc'''
     
-    def __init__(self, dist_name, var_name, variable_dic, **kwargs):
-        ProbDist.__init__(self, dist_name, var_name, variable_dic, **kwargs)
+    def __init__(self, dist_name, var_name, variable_dic, description, **kwargs):
+        Variable.__init__(self, dist_name, var_name, variable_dic, description,  **kwargs)
         module=globals().get(dist_name.split('.')[0])
         dist=getattr(module, dist_name.split('.')[1])
         self.frozen_dist=dist(**kwargs)
@@ -253,8 +213,8 @@ class categorical(customDist):
     keys: categories, 
     values: their relative probabilities.
      '''
-    def __init__(self, var_name, variable_dic, **kwargs):
-        ProbDist.__init__(self, 'categorical', var_name, variable_dic, **kwargs)
+    def __init__(self, var_name, variable_dic, description, **kwargs):
+        Variable.__init__(self, 'categorical', var_name, variable_dic, description, **kwargs)
         draw=setup_categorical_variable(kwargs)
         self.draw=draw
 
@@ -292,9 +252,9 @@ class numericConditional(Dist_w_conditional):
     based on the value of a given field. 
     Pass a set of '''
     
-    def __init__(self, cond_variable, var_name, variable_dic, **thresholds):
-        ProbDist.__init__(self, 'numericConditional', 
-                          var_name, variable_dic=variable_dic)
+    def __init__(self, cond_variable, var_name, variable_dic, description,  **thresholds):
+        Variable.__init__(self, 'numericConditional', 
+                          var_name, variable_dic=variable_dic, description=description)
         sub_variables=thresholds.keys()
         
         def draw1(**kwargs):
@@ -334,14 +294,11 @@ class numericConditional(Dist_w_conditional):
         self.draw=draw
         
         
-        
-        
-        
 
-class constant(ProbDist):
+class constant(Variable):
     '''A "distribution" that returns a constant.'''
-    def __init__(self, var_name, variable_dic, n, **kwargs):
-        ProbDist.__init__(self, 'constant', var_name, variable_dic=variable_dic)
+    def __init__(self, var_name, variable_dic, description, n, **kwargs):
+        Variable.__init__(self, 'constant', var_name, variable_dic=variable_dic, description=description)
         
         def draw(size, **kwargs):
             assert size
@@ -357,8 +314,8 @@ class echo(Dist_w_conditional):
     in the dictionary that is passed to it.
     '''
     
-    def __init__(self, echo_field, var_name, variable_dic, **kwargs):
-        ProbDist.__init__(self, 'echo', var_name, variable_dic=variable_dic)
+    def __init__(self, echo_field, var_name, variable_dic, description, **kwargs):
+        Variable.__init__(self, 'echo', var_name, variable_dic, description)
         def draw(size, **kwargs):
             results=[]
             for i in range(size):
@@ -382,9 +339,9 @@ class dist_plus_function(customDist):
         
         dist_kwargs={dist_kw: kwargs[dist_kw] 
                      for dist_kw in ensure_list(dist_kws)}
-        dist=create_dist(
-            dist_name, var_name="Temporary", 
-            variable_dic=None, **dist_kwargs)
+        
+        dist=variable_maker(dist_name, "Temporary", description= 'None', 
+                            variable_dic=None, **dist_kwargs)
         print(dist)
         
         def draw(size, **kwargs):
@@ -396,8 +353,8 @@ class dist_plus_function(customDist):
 class ceil_lognorm (dist_plus_function):
     '''Lognormal distribution rounded up to nearest integer.'''
     
-    def __init__(self,var_name, variable_dic, **kwargs):
-        ProbDist.__init__(self, 'ceil_lognorm', var_name, variable_dic=variable_dic)
+    def __init__(self,var_name, variable_dic, description, **kwargs):
+        Variable.__init__(self, 'ceil_lognorm', var_name, variable_dic, description)
         
         def ceil(x, **kwargs):
             return np.ceil(x)
@@ -406,8 +363,8 @@ class ceil_lognorm (dist_plus_function):
                                     ceil, dist_kws=['s'], **kwargs)
         
 class poissonMax (dist_plus_function):
-     def __init__(self, max_val, var_name, variable_dic, **kwargs):
-         ProbDist.__init__(self, 'poissonMax', var_name, variable_dic=variable_dic)
+     def __init__(self, var_name, variable_dic, description, max_val,  **kwargs):
+         Variable.__init__(self, 'poissonMax', var_name, variable_dic, description)
          def enforce_max(x, **kwargs):
              return np.where(x<max_val, x, max_val)
          dist_plus_function.__init__(self, 'stats.poisson', enforce_max, dist_kws=['mu'], **kwargs)
@@ -416,9 +373,9 @@ class dist_w_bool (dist_plus_function, Dist_w_conditional):
     '''A distribtution which returns a function if 
     a boolean statement evaluates as true, otherwise returns 0'''
     
-    def __init__(self, var_name, variable_dic, distribution, dist_kws, 
+    def __init__(self, var_name, variable_dic, description, distribution, dist_kws, 
                  bool_statement, else_response, **kwargs):
-        ProbDist.__init__(self, 'dist_w_bool', var_name, variable_dic=variable_dic)
+        Variable.__init__(self, 'dist_w_bool', var_name, variable_dic, description)
         def function(x, **kwargs):
             for key, value in kwargs.items(): 
                 locals()[key]=value
@@ -429,7 +386,7 @@ class dist_w_bool (dist_plus_function, Dist_w_conditional):
             return ensure_list(response)[0]
             
         dist_plus_function.__init__(self, distribution, 
-                                    function, dist_kws, **kwargs)
+                                    function, dist_kws,  **kwargs)
         
 
 class conditional(Dist_w_conditional):
@@ -441,9 +398,9 @@ class conditional(Dist_w_conditional):
     that have their own unique distributions.
     else_name: names of variables that will return for else values. '''
     
-    def __init__(self, var_name, cond_variable, 
+    def __init__(self, var_name, variable_dic, description, cond_variable, 
                  sub_variables,  else_names=[], **kwargs):
-        ProbDist.__init__(self, 'conditional', var_name, **kwargs)
+        Variable.__init__(self, 'conditional', var_name, variable_dic, description, **kwargs)
         
         self.cond_variable=cond_variable
         self.sub_variables=sub_variables
